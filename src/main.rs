@@ -1,4 +1,5 @@
 mod game;
+mod lobby;
 mod network;
 
 use std::cell::RefCell;
@@ -392,8 +393,9 @@ fn build_ui(app: &Application) {
             .default_width(420)
             .default_height(220)
             .child(&Label::new(Some(&format!(
-                "LAN protocol v{} is ready.\nLobby and network gameplay are next in Stage 9–10.",
-                network::PROTOCOL_VERSION
+                "LAN protocol v{} is ready.\nLobby supports up to {} players.\nNetwork gameplay follows in Stage 10.",
+                network::PROTOCOL_VERSION,
+                lobby::MAX_LOBBY_PLAYERS
             ))))
             .build();
         dialog.present();
