@@ -1,6 +1,4 @@
-use super::{
-    collision, GameConfig, GameMap, GameState, PlayerId, PowerUp, TankInput, Vec2,
-};
+use super::{GameConfig, GameMap, GameState, PlayerId, PowerUp, TankInput, Vec2, collision};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AiController {
@@ -177,10 +175,15 @@ fn next_waypoint(position: Vec2, target: Vec2, map: &GameMap, radius: f32) -> Op
     let rooms_x = ((cells_x - 2) / 2) as i32;
     let rooms_y = ((cells_y - 2) / 2) as i32;
     let room_size = 64.0;
-    let center = |x: i32, y: i32| Vec2::new(48.0 + x as f32 * room_size, 48.0 + y as f32 * room_size);
+    let center =
+        |x: i32, y: i32| Vec2::new(48.0 + x as f32 * room_size, 48.0 + y as f32 * room_size);
     let nearest = |point: Vec2| {
-        let x = ((point.x - 48.0) / room_size).round().clamp(0.0, (rooms_x - 1) as f32) as i32;
-        let y = ((point.y - 48.0) / room_size).round().clamp(0.0, (rooms_y - 1) as f32) as i32;
+        let x = ((point.x - 48.0) / room_size)
+            .round()
+            .clamp(0.0, (rooms_x - 1) as f32) as i32;
+        let y = ((point.y - 48.0) / room_size)
+            .round()
+            .clamp(0.0, (rooms_y - 1) as f32) as i32;
         (x, y)
     };
     let start = nearest(position);
@@ -224,7 +227,11 @@ fn next_waypoint(position: Vec2, target: Vec2, map: &GameMap, radius: f32) -> Op
         current = previous[index(current.0, current.1)]?;
     }
     let waypoint = center(current.0, current.1);
-    if map.walls.iter().any(|wall| collision::circle_intersects_wall(waypoint, radius, *wall)) {
+    if map
+        .walls
+        .iter()
+        .any(|wall| collision::circle_intersects_wall(waypoint, radius, *wall))
+    {
         None
     } else {
         Some(waypoint)
@@ -287,7 +294,9 @@ fn ricochet_can_hit(origin: Vec2, direction: Vec2, target: Vec2, map: &GameMap) 
         let mut nearest = None;
         for wall in &map.walls {
             if let Some(hit) = collision::segment_wall_hit(position, end, *wall) {
-                if nearest.is_none_or(|current: collision::CollisionHit| hit.distance < current.distance) {
+                if nearest
+                    .is_none_or(|current: collision::CollisionHit| hit.distance < current.distance)
+                {
                     nearest = Some(hit);
                 }
             }
@@ -314,13 +323,21 @@ mod tests {
 
     #[test]
     fn ai_targets_another_alive_tank() {
-        let mut sim = GameSimulation::new(GameMap::generate(MapSize::Small), GameConfig::default());
+        let mut sim =
+            GameSimulation::new(GameMap::generate(MapSize::Small), GameConfig::default());
         let ai = sim.state.add_player("AI", None).unwrap();
         let enemy = sim.state.add_player("Enemy", None).unwrap();
         sim.state.add_tank(ai, Vec2::new(100.0, 100.0));
         sim.state.add_tank(enemy, Vec2::new(200.0, 100.0));
         let mut controller = AiController::default();
-        let input = controller.input(&sim.state, &sim.map, &sim.config, &[], ai, 1.0 / 60.0);
+        let input = controller.input(
+            &sim.state,
+            &sim.map,
+            &sim.config,
+            &[],
+            ai,
+            1.0 / 60.0,
+        );
         assert!(input.right || input.forward || input.fire);
         assert_eq!(controller.target, Some(enemy));
     }
@@ -328,7 +345,8 @@ mod tests {
     #[test]
     fn ai_can_find_a_connected_waypoint() {
         let map = GameMap::generate(MapSize::Medium);
-        let waypoint = next_waypoint(Vec2::new(48.0, 48.0), Vec2::new(240.0, 240.0), &map, 14.0);
+        let waypoint =
+            next_waypoint(Vec2::new(48.0, 48.0), Vec2::new(240.0, 240.0), &map, 14.0);
         assert!(waypoint.is_some());
     }
 }
