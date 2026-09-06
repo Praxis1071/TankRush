@@ -33,7 +33,10 @@ pub struct AudioSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { music_enabled: true, sound_effects_enabled: true }
+        Self {
+            music_enabled: true,
+            sound_effects_enabled: true,
+        }
     }
 }
 
