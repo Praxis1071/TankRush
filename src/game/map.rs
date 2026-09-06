@@ -66,10 +66,12 @@ impl GameMap {
         let cell = 32.0;
         let width = cells_x_total as f32 * cell;
         let height = cells_y_total as f32 * cell;
-        let thickness = 16.0;
+        let thickness = 12.0;
         let cells_x = (cells_x_total - 2) as usize;
         let cells_y = (cells_y_total - 2) as usize;
-        let cell_count = cells_x * cells_y;
+        let rooms_x = cells_x / 2;
+        let rooms_y = cells_y / 2;
+        let room_count = rooms_x * rooms_y;
 
         let mut walls = vec![
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
@@ -78,11 +80,13 @@ impl GameMap {
             Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
         ];
 
-        // A deterministic depth-first maze creates a connected labyrinth while
-        // changing the topology between the four map sizes.  No external RNG
-        // dependency is needed, which keeps the simulation deterministic.
-        let mut visited = vec![false; cell_count];
-        let mut passages = vec![[false; 4]; cell_count];
+        // TankTrouble-style arenas work better when the battlefield has rooms,
+        // sight lines and alternate routes instead of a dense one-cell corridor
+        // maze. We therefore generate a maze on a grid of 2x2-cell rooms. The
+        // resulting openings are wide enough for tanks while walls still create
+        // meaningful ricochet angles and cover.
+        let mut visited = vec![false; room_count];
+        let mut passages = vec![[false; 4]; room_count];
         let mut stack = vec![(0usize, 0usize)];
         visited[0] = true;
         let mut seed = size.seed();
@@ -91,19 +95,20 @@ impl GameMap {
             let mut options = [(0usize, 0usize, 0usize, 0usize); 4];
             let mut option_count = 0;
             let candidates = [
-                (0isize, -1isize, 0usize, 1usize),
-                (1, 0, 1, 0),
-                (0, 1, 2, 3),
-                (-1, 0, 3, 2),
+                (0isize, -1isize, 0usize, 2usize),
+                (1, 0, 1, 3),
+                (0, 1, 2, 0),
+                (-1, 0, 3, 1),
             ];
+
             for &(dx, dy, direction, opposite) in &candidates {
                 let nx = x as isize + dx;
                 let ny = y as isize + dy;
                 if nx >= 0
                     && ny >= 0
-                    && (nx as usize) < cells_x
-                    && (ny as usize) < cells_y
-                    && !visited[ny as usize * cells_x + nx as usize]
+                    && (nx as usize) < rooms_x
+                    && (ny as usize) < rooms_y
+                    && !visited[ny as usize * rooms_x + nx as usize]
                 {
                     options[option_count] = (nx as usize, ny as usize, direction, opposite);
                     option_count += 1;
@@ -118,24 +123,23 @@ impl GameMap {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let choice = (seed as usize) % option_count;
             let (nx, ny, direction, opposite) = options[choice];
-            let current = y * cells_x + x;
-            let next = ny * cells_x + nx;
+            let current = y * rooms_x + x;
+            let next = ny * rooms_x + nx;
             passages[current][direction] = true;
             passages[next][opposite] = true;
             visited[next] = true;
             stack.push((nx, ny));
         }
 
-        // Remove a handful of walls to create wider tactical lanes.  These
-        // openings keep the maze from becoming a sequence of one-cell tunnels.
-        let extra_openings = (cells_x * cells_y / 18).max(2);
+        // Loops are important: TankTrouble-style maps should encourage chasing,
+        // flanking and bank shots rather than forcing a single route.
+        let extra_openings = (room_count / 5).max(2);
         for _ in 0..extra_openings {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            let x = (seed as usize) % cells_x;
+            let x = (seed as usize) % rooms_x;
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            let y = (seed as usize) % cells_y;
-            let directions = [1usize, 2usize, 3usize, 0usize];
-            let direction = directions[(seed as usize) % directions.len()];
+            let y = (seed as usize) % rooms_y;
+            let direction = (seed as usize) % 4;
             let (dx, dy, opposite) = match direction {
                 0 => (0isize, -1isize, 2usize),
                 1 => (1, 0, 3),
@@ -144,51 +148,60 @@ impl GameMap {
             };
             let nx = x as isize + dx;
             let ny = y as isize + dy;
-            if nx >= 0 && ny >= 0 && (nx as usize) < cells_x && (ny as usize) < cells_y {
-                let current = y * cells_x + x;
-                let next = ny as usize * cells_x + nx as usize;
+            if nx >= 0 && ny >= 0 && (nx as usize) < rooms_x && (ny as usize) < rooms_y {
+                let current = y * rooms_x + x;
+                let next = ny as usize * rooms_x + nx as usize;
                 passages[current][direction] = true;
                 passages[next][opposite] = true;
             }
         }
 
-        for y in 0..cells_y {
-            for x in 0..cells_x {
-                let index = y * cells_x + x;
-                let left = 16.0 + x as f32 * cell;
-                let top = 16.0 + y as f32 * cell;
-                if x + 1 < cells_x && !passages[index][1] {
-                    let wall_x = left + cell;
+        for y in 0..rooms_y {
+            for x in 0..rooms_x {
+                let index = y * rooms_x + x;
+                let left = 16.0 + x as f32 * cell * 2.0;
+                let top = 16.0 + y as f32 * cell * 2.0;
+
+                if x + 1 < rooms_x && !passages[index][1] {
+                    let wall_x = left + cell * 2.0;
                     walls.push(Wall::new(
                         Vec2::new(wall_x - thickness / 2.0, top),
-                        Vec2::new(wall_x + thickness / 2.0, top + cell),
+                        Vec2::new(wall_x + thickness / 2.0, top + cell * 2.0),
                     ));
                 }
-                if y + 1 < cells_y && !passages[index][2] {
-                    let wall_y = top + cell;
+                if y + 1 < rooms_y && !passages[index][2] {
+                    let wall_y = top + cell * 2.0;
                     walls.push(Wall::new(
                         Vec2::new(left, wall_y - thickness / 2.0),
-                        Vec2::new(left + cell, wall_y + thickness / 2.0),
+                        Vec2::new(left + cell * 2.0, wall_y + thickness / 2.0),
                     ));
                 }
             }
         }
 
-        let spawn_cells = [
+        // Spawn from roomy locations around the arena. They are deliberately
+        // distributed instead of using adjacent corners, reducing immediate
+        // spawn kills and giving each player a useful opening route.
+        let candidates = [
             (0usize, 0usize),
-            (cells_x - 1, 0),
-            (0, cells_y - 1),
-            (cells_x - 1, cells_y - 1),
-            (cells_x / 2, 0),
-            (cells_x / 2, cells_y - 1),
-            (0, cells_y / 2),
-            (cells_x - 1, cells_y / 2),
-            (cells_x / 3, cells_y / 3),
-            ((cells_x * 2) / 3, (cells_y * 2) / 3),
+            (rooms_x - 1, 0),
+            (0, rooms_y - 1),
+            (rooms_x - 1, rooms_y - 1),
+            (rooms_x / 2, 0),
+            (rooms_x / 2, rooms_y - 1),
+            (0, rooms_y / 2),
+            (rooms_x - 1, rooms_y / 2),
+            (rooms_x / 3, rooms_y / 3),
+            ((rooms_x * 2) / 3, (rooms_y * 2) / 3),
         ];
-        let spawn_points = spawn_cells
+        let spawn_points = candidates
             .into_iter()
-            .map(|(x, y)| Vec2::new(32.0 + x as f32 * cell, 32.0 + y as f32 * cell))
+            .map(|(x, y)| {
+                Vec2::new(
+                    16.0 + x as f32 * cell * 2.0 + cell,
+                    16.0 + y as f32 * cell * 2.0 + cell,
+                )
+            })
             .collect();
 
         Self {
@@ -201,15 +214,19 @@ impl GameMap {
     }
 
     pub fn is_inside_play_area(&self, point: Vec2, radius: f32) -> bool {
-        point.x - radius >= 16.0
-            && point.y - radius >= 16.0
-            && point.x + radius <= self.width - 16.0
-            && point.y + radius <= self.height - 16.0
+        point.x - radius >= thickness_margin()
+            && point.y - radius >= thickness_margin()
+            && point.x + radius <= self.width - thickness_margin()
+            && point.y + radius <= self.height - thickness_margin()
     }
 
     pub fn spawn_points(&self) -> &[Vec2] {
         &self.spawn_points
     }
+}
+
+const fn thickness_margin() -> f32 {
+    16.0
 }
 
 #[cfg(test)]
@@ -224,9 +241,10 @@ mod tests {
     }
 
     #[test]
-    fn generated_map_has_internal_walls() {
+    fn generated_map_has_internal_walls_without_being_dense() {
         let map = GameMap::generate(MapSize::Medium);
         assert!(map.walls.len() > 4);
+        assert!(map.walls.len() < 60);
     }
 
     #[test]
