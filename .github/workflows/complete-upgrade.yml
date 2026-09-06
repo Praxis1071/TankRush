@@ -1,0 +1,38 @@
+name: Complete TankRush Upgrade
+
+on:
+  push:
+    paths:
+      - 'scripts/complete_upgrade.py'
+      - '.github/workflows/complete-upgrade.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK4 development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Apply source upgrade
+        run: python3 scripts/complete_upgrade.py
+      - name: Format
+        run: cargo fmt --all
+      - name: Test
+        run: cargo test --all-targets --all-features
+      - name: Build
+        run: cargo build --all-targets
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A clippy::collapsible_if -A clippy::needless_range_loop -A clippy::option_map_unit_fn
+      - name: Commit upgraded source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main.rs src/game/config.rs src/game/powerup.rs src/game/simulation.rs
+          git commit -m 'feat: complete gameplay and weapon presentation upgrade' || true
+          git push origin HEAD:main
