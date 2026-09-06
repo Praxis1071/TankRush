@@ -1,0 +1,47 @@
+name: Direct TT2 polish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install GTK4 development packages
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+      - name: Patch main.rs
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('src/main.rs')
+          s = p.read_text()
+          s = s.replace('about.append(&Label::new(Some("Mehmet Boztepe")));', 'about.append(&Label::new(Some("Praxis1071")));')
+          s = s.replace('pairs.push((ai_id, ai.input(&self.simulation.state, ai_id, dt)));', 'pairs.push((ai_id, ai.input(&self.simulation.state, &self.simulation.map, &self.simulation.config, ai_id, dt)));')
+          s = s.replace('    (0.20, 0.75, 1.0),\n    (1.0, 0.35, 0.35),\n    (0.35, 1.0, 0.45),\n    (1.0, 0.80, 0.25),', '    (0.25, 0.95, 0.35),\n    (0.95, 0.20, 0.22),\n    (0.20, 0.55, 1.0),\n    (1.0, 0.82, 0.18),')
+          s = s.replace('    context.set_source_rgb(0.055, 0.075, 0.085);', '    context.set_source_rgb(0.88, 0.89, 0.90);')
+          s = s.replace('    context.set_source_rgb(0.17, 0.21, 0.24);', '    context.set_source_rgb(0.16, 0.17, 0.18);')
+          s = s.replace('context.arc(\n            tank.position.x as f64,\n            tank.position.y as f64,\n            simulation.config.tank_radius as f64,\n            0.0,\n            std::f64::consts::TAU,\n        );\n        context.fill().ok();', 'context.save().ok();\n        context.translate(tank.position.x as f64, tank.position.y as f64);\n        context.rotate(tank.rotation_radians as f64);\n        context.rectangle(-16.0, -12.0, 32.0, 24.0);\n        context.fill().ok();\n        context.restore().ok();')
+          p.write_text(s)
+          PY
+      - name: Format and verify
+        run: |
+          cargo fmt --all
+          cargo test --all-targets --all-features
+          cargo build --all-targets --all-features
+          cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A clippy::collapsible_if -A clippy::needless_range_loop -A clippy::option_map_unit_fn
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.rs
+          git diff --cached --quiet || git commit -m "feat: apply direct TT2 visual polish"
+          git push
