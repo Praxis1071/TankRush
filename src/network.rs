@@ -5,7 +5,7 @@ use std::net::{SocketAddr, UdpSocket};
 use crate::game::{PlayerId, TankInput, Vec2};
 
 pub const PROTOCOL_VERSION: u8 = 1;
-pub const MAX_PACKET_SIZE: usize = 512;
+pub const MAX_PACKET_SIZE: usize = 1200;
 const MAGIC: [u8; 4] = *b"TR01";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -317,12 +317,26 @@ impl LanHost {
         self.peers.insert(player_id, addr);
     }
 
-    pub fn broadcast(&self, packet: &Packet) -> io::Result<()> {
+    pub fn unregister_peer(&mut self, player_id: PlayerId) -> Option<SocketAddr> {
+        self.peers.remove(&player_id)
+    }
+
+    pub fn player_for_addr(&self, addr: SocketAddr) -> Option<PlayerId> {
+        self.peers
+            .iter()
+            .find_map(|(&player_id, &peer_addr)| (peer_addr == addr).then_some(player_id))
+    }
+
+    pub fn send_to(&self, packet: &Packet, addr: SocketAddr) -> io::Result<()> {
         let encoded = packet
             .encode()
             .map_err(|_| io::Error::other("packet encoding failed"))?;
+        self.socket.send_to(&encoded, addr).map(|_| ())
+    }
+
+    pub fn broadcast(&self, packet: &Packet) -> io::Result<()> {
         for addr in self.peers.values() {
-            self.socket.send_to(&encoded, addr)?;
+            self.send_to(packet, *addr)?;
         }
         Ok(())
     }
@@ -334,6 +348,50 @@ impl LanHost {
                 Ok(packet) => Ok(Some((packet, addr))),
                 Err(_) => Ok(None),
             },
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LanClient {
+    socket: UdpSocket,
+    server_addr: SocketAddr,
+}
+
+impl LanClient {
+    pub fn bind(local_addr: SocketAddr, server_addr: SocketAddr) -> io::Result<Self> {
+        let socket = UdpSocket::bind(local_addr)?;
+        socket.set_nonblocking(true)?;
+        Ok(Self {
+            socket,
+            server_addr,
+        })
+    }
+
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
+
+    pub fn server_addr(&self) -> SocketAddr {
+        self.server_addr
+    }
+
+    pub fn send(&self, packet: &Packet) -> io::Result<()> {
+        let encoded = packet
+            .encode()
+            .map_err(|_| io::Error::other("packet encoding failed"))?;
+        self.socket.send_to(&encoded, self.server_addr).map(|_| ())
+    }
+
+    pub fn receive(&self) -> io::Result<Option<Packet>> {
+        let mut buffer = [0u8; MAX_PACKET_SIZE];
+        match self.socket.recv_from(&mut buffer) {
+            Ok((length, addr)) if addr == self.server_addr => {
+                Ok(Packet::decode(&buffer[..length]).ok())
+            }
+            Ok(_) => Ok(None),
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
             Err(error) => Err(error),
         }
@@ -399,9 +457,10 @@ mod tests {
     }
 
     #[test]
-    fn host_can_bind_and_register_peer() {
+    fn host_and_client_can_bind() {
         let host = LanHost::bind("127.0.0.1:0".parse().unwrap()).unwrap();
-        let addr = host.local_addr().unwrap();
-        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        let server_addr = host.local_addr().unwrap();
+        let client = LanClient::bind("127.0.0.1:0".parse().unwrap(), server_addr).unwrap();
+        assert_eq!(client.server_addr(), server_addr);
     }
 }
