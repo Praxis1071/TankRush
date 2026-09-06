@@ -26,7 +26,12 @@ pub struct Tank {
 
 impl Tank {
     pub fn new(player_id: PlayerId, position: Vec2) -> Self {
-        Self { player_id, position, rotation_radians: 0.0, alive: true }
+        Self {
+            player_id,
+            position,
+            rotation_radians: 0.0,
+            alive: true,
+        }
     }
 
     pub fn direction(&self) -> Vec2 {
@@ -43,19 +48,26 @@ impl Tank {
 
     fn move_signed(&mut self, direction: f32, seconds: f32, config: &GameConfig) {
         if self.alive {
-            self.position = self.position + self.direction() * (config.tank_speed * direction * seconds);
+            self.position =
+                self.position + self.direction() * (config.tank_speed * direction * seconds);
         }
     }
 
     pub fn turn_left(&mut self, seconds: f32, config: &GameConfig) {
-        if self.alive { self.rotation_radians -= config.tank_turn_speed_radians * seconds; }
+        if self.alive {
+            self.rotation_radians -= config.tank_turn_speed_radians * seconds;
+        }
     }
 
     pub fn turn_right(&mut self, seconds: f32, config: &GameConfig) {
-        if self.alive { self.rotation_radians += config.tank_turn_speed_radians * seconds; }
+        if self.alive {
+            self.rotation_radians += config.tank_turn_speed_radians * seconds;
+        }
     }
 
-    pub fn destroy(&mut self) { self.alive = false; }
+    pub fn destroy(&mut self) {
+        self.alive = false;
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -68,7 +80,13 @@ pub struct Projectile {
 }
 
 impl Projectile {
-    pub fn new(id: ProjectileId, owner: PlayerId, position: Vec2, direction: Vec2, config: &GameConfig) -> Self {
+    pub fn new(
+        id: ProjectileId,
+        owner: PlayerId,
+        position: Vec2,
+        direction: Vec2,
+        config: &GameConfig,
+    ) -> Self {
         Self {
             id,
             owner,
@@ -87,7 +105,9 @@ impl Projectile {
         self.velocity = self.velocity.reflect(normal.normalized());
     }
 
-    pub fn expired(&self) -> bool { self.remaining_lifetime <= 0.0 }
+    pub fn expired(&self) -> bool {
+        self.remaining_lifetime <= 0.0
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -99,10 +119,20 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn add_player(&mut self, name: impl Into<String>, team: Option<TeamId>) -> Option<PlayerId> {
-        if self.players.len() >= 10 { return None; }
+    pub fn add_player(
+        &mut self,
+        name: impl Into<String>,
+        team: Option<TeamId>,
+    ) -> Option<PlayerId> {
+        if self.players.len() >= 10 {
+            return None;
+        }
         let id = PlayerId(self.players.len() as u8);
-        self.players.push(Player { id, name: name.into(), team });
+        self.players.push(Player {
+            id,
+            name: name.into(),
+            team,
+        });
         Some(id)
     }
 
@@ -111,26 +141,50 @@ impl GameState {
     }
 
     pub fn fire(&mut self, player_id: PlayerId, config: &GameConfig) -> Option<ProjectileId> {
-        let active_count = self.projectiles.iter().filter(|p| p.owner == player_id).count();
-        if active_count >= config.max_active_projectiles_per_tank { return None; }
-        let tank = self.tanks.iter().find(|t| t.player_id == player_id && t.alive)?;
+        let active_count = self
+            .projectiles
+            .iter()
+            .filter(|p| p.owner == player_id)
+            .count();
+        if active_count >= config.max_active_projectiles_per_tank {
+            return None;
+        }
+        let tank = self
+            .tanks
+            .iter()
+            .find(|t| t.player_id == player_id && t.alive)?;
         let id = ProjectileId(self.next_projectile_id);
         self.next_projectile_id = self.next_projectile_id.wrapping_add(1);
-        let spawn_position = tank.position + tank.direction() * (config.tank_radius + config.projectile_radius + 1.0);
-        self.projectiles.push(Projectile::new(id, player_id, spawn_position, tank.direction(), config));
+        let spawn_position = tank.position
+            + tank.direction() * (config.tank_radius + config.projectile_radius + 1.0);
+        self.projectiles.push(Projectile::new(
+            id,
+            player_id,
+            spawn_position,
+            tank.direction(),
+            config,
+        ));
         Some(id)
     }
 
     pub fn update_projectiles(&mut self, seconds: f32) {
-        for projectile in &mut self.projectiles { projectile.update(seconds); }
+        for projectile in &mut self.projectiles {
+            projectile.update(seconds);
+        }
         self.projectiles.retain(|projectile| !projectile.expired());
     }
 
     pub fn destroy_tank(&mut self, player_id: PlayerId) -> bool {
-        if let Some(tank) = self.tanks.iter_mut().find(|tank| tank.player_id == player_id && tank.alive) {
+        if let Some(tank) = self
+            .tanks
+            .iter_mut()
+            .find(|tank| tank.player_id == player_id && tank.alive)
+        {
             tank.destroy();
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 }
 
@@ -141,7 +195,9 @@ mod tests {
     #[test]
     fn player_limit_is_ten() {
         let mut state = GameState::default();
-        for index in 0..10 { assert!(state.add_player(format!("P{index}"), None).is_some()); }
+        for index in 0..10 {
+            assert!(state.add_player(format!("P{index}"), None).is_some());
+        }
         assert!(state.add_player("P10", None).is_none());
     }
 
@@ -167,7 +223,9 @@ mod tests {
         let mut state = GameState::default();
         let player = state.add_player("P1", None).unwrap();
         state.add_tank(player, Vec2::ZERO);
-        for _ in 0..8 { assert!(state.fire(player, &config).is_some()); }
+        for _ in 0..8 {
+            assert!(state.fire(player, &config).is_some());
+        }
         assert!(state.fire(player, &config).is_none());
     }
 
