@@ -10,4 +10,3 @@ repository = "https://github.com/Praxis1071/TankRush"
 [dependencies]
 gtk4 = { version = "0.10", package = "gtk4" }
 glib = "0.21"
-rodio = { version = "0.22", default-features = false, features = ["playback"] }
