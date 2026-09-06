@@ -1,4 +1,7 @@
-use super::{GameConfig, GameMode, GameState, PlayerId, TeamId};
+use super::{GameConfig, GameState, PlayerId, TeamId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode { FreeForAll, TeamBattle }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GameRules {
@@ -17,9 +20,7 @@ impl GameRules {
     }
 
     pub fn with_team_count(mut self, team_count: usize) -> Option<Self> {
-        if !matches!(self.mode, GameMode::TeamBattle) || !(2..=self.max_players.min(4)).contains(&team_count) {
-            return None;
-        }
+        if !matches!(self.mode, GameMode::TeamBattle) || !(2..=self.max_players.min(4)).contains(&team_count) { return None; }
         self.team_count = team_count;
         Some(self)
     }
@@ -32,11 +33,8 @@ impl GameRules {
     pub fn winner(&self, state: &GameState) -> Option<Vec<TeamId>> {
         let alive: Vec<PlayerId> = state.tanks.iter().filter(|tank| tank.alive).map(|tank| tank.player_id).collect();
         if alive.is_empty() { return None; }
-
         match self.mode {
-            GameMode::FreeForAll => {
-                if alive.len() == 1 { Some(vec![]) } else { None }
-            }
+            GameMode::FreeForAll => if alive.len() == 1 { Some(vec![]) } else { None },
             GameMode::TeamBattle => {
                 let mut teams = Vec::new();
                 for player_id in alive {
@@ -53,9 +51,6 @@ impl GameRules {
         if team_count < 2 { None } else { Some(TeamId((player_index % team_count) as u8)) }
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GameMode { FreeForAll, TeamBattle }
 
 #[cfg(test)]
 mod tests {
