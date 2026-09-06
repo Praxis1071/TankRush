@@ -10,13 +10,31 @@ const MAGIC: [u8; 4] = *b"TR01";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Packet {
-    Hello { player_name: String },
-    JoinRequest { player_name: String },
-    JoinAccepted { player_id: PlayerId },
-    Ready { player_id: PlayerId, ready: bool },
-    Input { player_id: PlayerId, input: TankInput },
-    Snapshot { tick: u32, tanks: Vec<TankSnapshot>, projectiles: Vec<ProjectileSnapshot> },
-    Disconnect { player_id: PlayerId },
+    Hello {
+        player_name: String,
+    },
+    JoinRequest {
+        player_name: String,
+    },
+    JoinAccepted {
+        player_id: PlayerId,
+    },
+    Ready {
+        player_id: PlayerId,
+        ready: bool,
+    },
+    Input {
+        player_id: PlayerId,
+        input: TankInput,
+    },
+    Snapshot {
+        tick: u32,
+        tanks: Vec<TankSnapshot>,
+        projectiles: Vec<ProjectileSnapshot>,
+    },
+    Disconnect {
+        player_id: PlayerId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -190,6 +208,7 @@ pub enum ProtocolError {
     InvalidUtf8,
     PacketTooLarge,
     Malformed,
+    TrailingBytes,
 }
 
 struct Reader<'a> {
@@ -207,7 +226,10 @@ impl<'a> Reader<'a> {
     }
 
     fn take(&mut self, count: usize) -> Result<&'a [u8], ProtocolError> {
-        let end = self.cursor.checked_add(count).ok_or(ProtocolError::Malformed)?;
+        let end = self
+            .cursor
+            .checked_add(count)
+            .ok_or(ProtocolError::Malformed)?;
         if end > self.bytes.len() {
             return Err(ProtocolError::Malformed);
         }
@@ -296,7 +318,9 @@ impl LanHost {
     }
 
     pub fn broadcast(&self, packet: &Packet) -> io::Result<()> {
-        let encoded = packet.encode().map_err(|_| io::Error::other("packet encoding failed"))?;
+        let encoded = packet
+            .encode()
+            .map_err(|_| io::Error::other("packet encoding failed"))?;
         for addr in self.peers.values() {
             self.socket.send_to(&encoded, addr)?;
         }
@@ -358,7 +382,10 @@ mod tests {
 
     #[test]
     fn malformed_packets_are_rejected() {
-        assert!(matches!(Packet::decode(b"bad"), Err(ProtocolError::InvalidLength)));
+        assert!(matches!(
+            Packet::decode(b"bad"),
+            Err(ProtocolError::InvalidLength)
+        ));
         let mut encoded = Packet::JoinRequest {
             player_name: "Player".into(),
         }
