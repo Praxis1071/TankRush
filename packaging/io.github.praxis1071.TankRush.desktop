@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=TankRush
+Comment=GTK4 ricochet tank arena
+Exec=tankrush
+Icon=io.github.praxis1071.TankRush
+Terminal=false
+Type=Application
+Categories=Game;ArcadeGame;
+StartupNotify=true
