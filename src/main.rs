@@ -17,7 +17,8 @@ use gtk4::cairo::Context;
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText,
-    DrawingArea, Entry, EventControllerKey, Label, Orientation, SpinButton, Stack,
+    DrawingArea, Entry, EventControllerKey, Label, LinkButton, Orientation, SpinButton, Stack,
+    StackSwitcher,
 };
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
@@ -54,6 +55,7 @@ fn key_label(key: &str) -> String {
     match key {
         "space" => "Space".into(),
         "Return" => "Enter".into(),
+        "Escape" => "Esc".into(),
         "Up" => "↑".into(),
         "Down" => "↓".into(),
         "Left" => "←".into(),
@@ -84,6 +86,7 @@ struct MatchRuntime {
     round_winner: Option<PlayerId>,
     draw_round: bool,
     respawn_countdown: f32,
+    paused: bool,
 }
 
 impl MatchRuntime {
@@ -106,6 +109,7 @@ impl MatchRuntime {
             round_winner: None,
             draw_round: false,
             respawn_countdown: 0.0,
+            paused: false,
         };
         runtime.spawn_round(seed);
         runtime
@@ -122,6 +126,7 @@ impl MatchRuntime {
         self.weapons = [None; 4];
         self.weapon_uses = [0; 4];
         self.ai_id = None;
+        self.paused = false;
         let spawns = self.simulation.map.spawn_points().to_vec();
         for index in 0..self.human_count {
             let id = self
@@ -219,7 +224,19 @@ impl MatchRuntime {
                     projectile.remaining_lifetime = 2.2;
                 }
             }
-            PowerUpKind::GuidedMissile => {}
+            PowerUpKind::GuidedMissile => {
+                if let Some(projectile) = self
+                    .simulation
+                    .state
+                    .projectiles
+                    .iter_mut()
+                    .rev()
+                    .find(|p| p.owner == owner)
+                {
+                    projectile.velocity = projectile.velocity * 0.92;
+                    projectile.remaining_lifetime = 5.0;
+                }
+            }
             PowerUpKind::Shrapnel => {
                 for _ in 0..5 {
                     self.simulation.state.fire(owner, &self.simulation.config);
@@ -311,13 +328,7 @@ impl MatchRuntime {
             else {
                 continue;
             };
-            if self
-                .weapons
-                .get(owner_tank.player_id.0 as usize)
-                .copied()
-                .flatten()
-                == Some(PowerUpKind::GuidedMissile)
-            {
+            if self.weapons[owner_tank.player_id.0 as usize] == Some(PowerUpKind::GuidedMissile) {
                 let desired = (target.position - projectile.position).normalized();
                 let speed = projectile.velocity.length();
                 projectile.velocity =
@@ -326,7 +337,16 @@ impl MatchRuntime {
         }
     }
 
+    fn toggle_pause(&mut self) {
+        if self.round_winner.is_none() && !self.draw_round {
+            self.paused = !self.paused;
+        }
+    }
+
     fn tick(&mut self, dt: f32, inputs: &[TankInput; 4]) {
+        if self.paused {
+            return;
+        }
         if self.round_winner.is_some() || self.draw_round {
             self.respawn_countdown = (self.respawn_countdown - dt).max(0.0);
             if self.respawn_countdown == 0.0 {
@@ -500,7 +520,18 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         .join("   ");
     context.show_text(&score).ok();
 
-    if let Some(winner) = runtime.round_winner {
+    if runtime.paused {
+        context.set_source_rgb(0.03, 0.04, 0.05);
+        context.rectangle(0.0, 0.0, width, height);
+        context.fill().ok();
+        context.set_source_rgb(0.95, 0.96, 0.98);
+        context.set_font_size(34.0);
+        context.move_to(width / 2.0 - 80.0, height / 2.0);
+        context.show_text("PAUSED").ok();
+        context.set_font_size(15.0);
+        context.move_to(width / 2.0 - 115.0, height / 2.0 + 30.0);
+        context.show_text("Press Esc to resume").ok();
+    } else if let Some(winner) = runtime.round_winner {
         context.set_font_size(28.0);
         context.move_to(24.0, height - 48.0);
         context
@@ -544,8 +575,10 @@ fn build_game_screen(
     let title = Label::new(Some("TankRush  •  Battle Arena"));
     title.set_hexpand(true);
     title.set_halign(gtk4::Align::Start);
+    let pause = Button::with_label("Pause");
     let back = Button::with_label("Back to Menu");
     toolbar.append(&title);
+    toolbar.append(&pause);
     toolbar.append(&back);
     root.append(&toolbar);
     let drawing_area = DrawingArea::new();
@@ -562,6 +595,7 @@ fn build_game_screen(
     }
     let key_controller = EventControllerKey::new();
     {
+        let runtime = Rc::clone(&runtime);
         let inputs = Rc::clone(&inputs);
         let pending = Rc::clone(&fire_pending);
         let down = Rc::clone(&fire_down);
@@ -571,6 +605,10 @@ fn build_game_screen(
                 return Propagation::Proceed;
             };
             let name = name.to_string();
+            if name == "Escape" {
+                runtime.borrow_mut().toggle_pause();
+                return Propagation::Stop;
+            }
             let mut input = inputs.borrow_mut();
             let mut pending = pending.borrow_mut();
             let mut down = down.borrow_mut();
@@ -632,6 +670,15 @@ fn build_game_screen(
     }
     drawing_area.add_controller(key_controller);
     root.append(&drawing_area);
+
+    let runtime_pause = Rc::clone(&runtime);
+    let drawing_pause = drawing_area.clone();
+    pause.connect_clicked(move |button| {
+        let mut runtime = runtime_pause.borrow_mut();
+        runtime.toggle_pause();
+        button.set_label(if runtime.paused { "Resume" } else { "Pause" });
+        drawing_pause.queue_draw();
+    });
 
     let active_timer = Rc::clone(&active);
     let runtime_timer = Rc::clone(&runtime);
@@ -863,7 +910,14 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         page.set_margin_start(36);
         page.set_margin_end(36);
         page.set_margin_bottom(32);
-        page.append(&Label::new(Some("Settings")));
+        let tabs = Stack::new();
+        tabs.set_vexpand(true);
+        tabs.set_hexpand(true);
+        let switcher = StackSwitcher::new();
+        switcher.set_stack(Some(&tabs));
+
+        let general = Box::new(Orientation::Vertical, 12);
+        general.append(&Label::new(Some("Audio")));
         let music = CheckButton::with_label("Music");
         let effects = CheckButton::with_label("Sound effects");
         music.set_active(a.borrow().music_enabled);
@@ -876,8 +930,32 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
             let a = Rc::clone(&a);
             effects.connect_toggled(move |b| a.borrow_mut().sound_effects_enabled = b.is_active());
         }
-        page.append(&music);
-        page.append(&effects);
+        general.append(&music);
+        general.append(&effects);
+        general.append(&Label::new(Some("Gameplay")));
+        general.append(&Label::new(Some(
+            "Esc pauses the match. A new random arena is generated after each round.",
+        )));
+        tabs.add_titled(&general, Some("general"), "General");
+
+        let about = Box::new(Orientation::Vertical, 10);
+        about.set_margin_top(12);
+        about.set_margin_start(8);
+        about.set_margin_end(8);
+        about.append(&Label::new(Some("About TankRush")));
+        about.append(&Label::new(Some("TankRush is a Rust + GTK4 tank arena project inspired by classic ricochet tank games.")));
+        about.append(&Label::new(Some("Developer")));
+        about.append(&Label::new(Some("Mehmet Boztepe")));
+        about.append(&Label::new(Some("Source code")));
+        about.append(&LinkButton::with_label(
+            "https://github.com/Praxis1071/TankRush",
+            "GitHub • Praxis1071/TankRush",
+        ));
+        about.append(&Label::new(Some("License: MIT")));
+        tabs.add_titled(&about, Some("about"), "About");
+
+        page.append(&switcher);
+        page.append(&tabs);
         let back = Button::with_label("Back");
         let s2 = s.clone();
         back.connect_clicked(move |_| s2.set_visible_child_name("menu"));
