@@ -1,6 +1,4 @@
-use super::{
-    collision::segment_wall_hit, GameConfig, GameMap, GameState, PlayerId, Vec2,
-};
+use super::{GameConfig, GameMap, GameState, PlayerId, Vec2, collision::segment_wall_hit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TankInput {
@@ -176,11 +174,7 @@ impl GameSimulation {
     fn can_place_tank(&self, position: Vec2) -> bool {
         self.map.is_inside_play_area(position, self.config.tank_radius)
             && !self.map.walls.iter().any(|wall| {
-                super::collision::circle_intersects_wall(
-                    position,
-                    self.config.tank_radius,
-                    *wall,
-                )
+                super::collision::circle_intersects_wall(position, self.config.tank_radius, *wall)
             })
     }
 
@@ -228,14 +222,10 @@ mod tests {
 
     #[test]
     fn simulation_uses_fixed_timestep() {
-        let mut simulation = GameSimulation::new(
-            GameMap::rectangular(MapSize::Small),
-            GameConfig::default(),
-        );
+        let mut simulation =
+            GameSimulation::new(GameMap::rectangular(MapSize::Small), GameConfig::default());
         let player = simulation.state.add_player("P1", None).unwrap();
-        simulation
-            .state
-            .add_tank(player, Vec2::new(100.0, 100.0));
+        simulation.state.add_tank(player, Vec2::new(100.0, 100.0));
         simulation.advance(
             0.010,
             &[(
@@ -262,14 +252,10 @@ mod tests {
 
     #[test]
     fn wall_blocks_tank() {
-        let mut simulation = GameSimulation::new(
-            GameMap::rectangular(MapSize::Small),
-            GameConfig::default(),
-        );
+        let mut simulation =
+            GameSimulation::new(GameMap::rectangular(MapSize::Small), GameConfig::default());
         let player = simulation.state.add_player("P1", None).unwrap();
-        simulation
-            .state
-            .add_tank(player, Vec2::new(32.0, 100.0));
+        simulation.state.add_tank(player, Vec2::new(32.0, 100.0));
         simulation.state.tanks[0].rotation_radians = std::f32::consts::PI;
         simulation.advance(
             1.0,
@@ -286,10 +272,8 @@ mod tests {
 
     #[test]
     fn projectile_destroys_other_tank() {
-        let mut simulation = GameSimulation::new(
-            GameMap::rectangular(MapSize::Small),
-            GameConfig::default(),
-        );
+        let mut simulation =
+            GameSimulation::new(GameMap::rectangular(MapSize::Small), GameConfig::default());
         let a = simulation.state.add_player("A", None).unwrap();
         let b = simulation.state.add_player("B", None).unwrap();
         simulation.state.add_tank(a, Vec2::new(100.0, 100.0));
