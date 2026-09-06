@@ -1,0 +1,24 @@
+app-id: io.github.praxis1071.TankRush
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: tankrush
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+modules:
+  - name: tankrush
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 target/release/tankrush /app/bin/tankrush
+      - install -Dm644 packaging/io.github.praxis1071.TankRush.desktop /app/share/applications/io.github.praxis1071.TankRush.desktop
+      - install -Dm644 packaging/io.github.praxis1071.TankRush.metainfo.xml /app/share/metainfo/io.github.praxis1071.TankRush.metainfo.xml
+      - install -Dm644 packaging/io.github.praxis1071.TankRush.svg /app/share/icons/hicolor/scalable/apps/io.github.praxis1071.TankRush.svg
+    build-options:
+      env:
+        CARGO_HOME: /run/build/tankrush/cargo
+    sources:
+      - type: dir
+        path: ..
