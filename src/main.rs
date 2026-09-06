@@ -23,10 +23,10 @@ use gtk4::{
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
 const PLAYER_COLORS: [(f64, f64, f64); 4] = [
-    (0.20, 0.75, 1.0),
-    (1.0, 0.35, 0.35),
-    (0.35, 1.0, 0.45),
-    (1.0, 0.80, 0.25),
+    (0.25, 0.95, 0.35),
+    (0.95, 0.20, 0.22),
+    (0.20, 0.55, 1.0),
+    (1.0, 0.82, 0.18),
 ];
 
 #[derive(Debug, Clone)]
@@ -172,7 +172,16 @@ impl MatchRuntime {
             .map(|(i, input)| (PlayerId(i as u8), input))
             .collect::<Vec<_>>();
         if let (Some(ai), Some(ai_id)) = (&mut self.ai, self.ai_id) {
-            pairs.push((ai_id, ai.input(&self.simulation.state, ai_id, dt)));
+            pairs.push((
+                ai_id,
+                ai.input(
+                    &self.simulation.state,
+                    &self.simulation.map,
+                    &self.simulation.config,
+                    ai_id,
+                    dt,
+                ),
+            ));
         }
         pairs
     }
@@ -403,7 +412,7 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
     context.save().ok();
     context.translate(offset_x, offset_y);
     context.scale(scale, scale);
-    context.set_source_rgb(0.055, 0.075, 0.085);
+    context.set_source_rgb(0.88, 0.89, 0.90);
     context.rectangle(
         0.0,
         0.0,
@@ -412,7 +421,7 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
     );
     context.fill().ok();
 
-    context.set_source_rgb(0.17, 0.21, 0.24);
+    context.set_source_rgb(0.16, 0.17, 0.18);
     for wall in &simulation.map.walls {
         context.rectangle(
             wall.min.x as f64,
@@ -459,14 +468,12 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         }
         let color = PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()];
         context.set_source_rgb(color.0, color.1, color.2);
-        context.arc(
-            tank.position.x as f64,
-            tank.position.y as f64,
-            simulation.config.tank_radius as f64,
-            0.0,
-            std::f64::consts::TAU,
-        );
+        context.save().ok();
+        context.translate(tank.position.x as f64, tank.position.y as f64);
+        context.rotate(tank.rotation_radians as f64);
+        context.rectangle(-16.0, -12.0, 32.0, 24.0);
         context.fill().ok();
+        context.restore().ok();
         let direction = tank.direction();
         context.set_line_width(7.0);
         context.set_line_cap(gtk4::cairo::LineCap::Round);
@@ -943,9 +950,11 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         about.set_margin_start(8);
         about.set_margin_end(8);
         about.append(&Label::new(Some("About TankRush")));
-        about.append(&Label::new(Some("TankRush is a Rust + GTK4 tank arena project inspired by classic ricochet tank games.")));
+        about.append(&Label::new(Some(
+            "TankRush is a Rust + GTK4 tank arena project inspired by classic ricochet tank games.",
+        )));
         about.append(&Label::new(Some("Developer")));
-        about.append(&Label::new(Some("Mehmet Boztepe")));
+        about.append(&Label::new(Some("Praxis1071")));
         about.append(&Label::new(Some("Source code")));
         about.append(&LinkButton::with_label(
             "https://github.com/Praxis1071/TankRush",
