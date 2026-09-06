@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.praxis1071.TankRush</id>
+  <name>TankRush</name>
+  <summary>Fast ricochet tank arena for GTK4</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <launchable type="desktop-id">io.github.praxis1071.TankRush.desktop</launchable>
+  <developer id="io.github.praxis1071">
+    <name>Praxis1071</name>
+  </developer>
+  <description>
+    <p>A Rust and GTK4 tank arena with random mazes, ricocheting projectiles, power-ups and local multiplayer.</p>
+  </description>
+  <content_rating type="oars-1.1"/>
+</component>
