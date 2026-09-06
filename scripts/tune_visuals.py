@@ -9,6 +9,7 @@ def replace_once(path: str, old: str, new: str) -> None:
     p.write_text(s.replace(old, new, 1))
 
 
+# Visual theme: yellow hulls, black hardware, consistent AI/player presentation.
 replace_once(
     "src/main.rs",
     """const PLAYER_COLORS: [(f64, f64, f64); 4] = [
@@ -39,8 +40,9 @@ replace_once(
     "context.set_source_rgb(1.0, 0.86, 0.10);",
 )
 
-# Tank Trouble 2-style baseline: 120 px/s tank speed, 4 rad/s turn rate,
-# 300 px/s shells, 0.5 s fire cadence, five active shells per tank.
+# Tank Trouble 2-inspired baseline from the researched remake reference:
+# 120 px/s tank speed, 4 rad/s turn rate, 300 px/s shell speed,
+# 0.5 s fire cooldown, five active shells per tank.
 replace_once("src/game/config.rs", "tank_turn_speed_radians: 3.6,", "tank_turn_speed_radians: 4.0,")
 replace_once("src/game/config.rs", "max_active_projectiles_per_tank: 8,", "max_active_projectiles_per_tank: 5,")
 replace_once(
@@ -59,6 +61,7 @@ replace_once(
     "assert!((config.tank_turn_speed_radians - 4.0).abs() < f32::EPSILON);\n        assert!((config.projectile_fire_cooldown_seconds - 0.5).abs() < f32::EPSILON);",
 )
 
+# Real fire cadence is enforced in the simulation, independent of frame rate.
 replace_once(
     "src/game/entity.rs",
     """pub struct GameState {
@@ -140,8 +143,13 @@ replace_once(
 )
 replace_once(
     "src/game/entity.rs",
-    "assert!((tank.position.x - config.tank_speed).abs() < 0.001);",
-    "assert!((tank.position.x - config.tank_speed).abs() < 0.001);\n        assert!((config.projectile_fire_cooldown_seconds - 0.5).abs() < 0.001);",
+    "for _ in 0..8 {",
+    "for _ in 0..5 {",
+)
+replace_once(
+    "src/game/entity.rs",
+    "assert!(state.fire(player, &config).is_none());",
+    "assert!(state.fire(player, &config).is_none());\n        state.tick_fire_cooldowns(0.5);\n        assert!(state.fire(player, &config).is_some());",
 )
 replace_once(
     "src/game/simulation.rs",
@@ -152,6 +160,7 @@ replace_once(
         let mut events = Vec::new();""",
 )
 
+# Add a mine power-up using the existing deterministic projectile/collision pipeline.
 replace_once(
     "src/game/powerup.rs",
     """    GuidedMissile,
@@ -180,8 +189,6 @@ replace_once(
             Self::Shrapnel => \"FRAG\",
             Self::Mine => \"MINE\",""",
 )
-
-# Add a stationary mine weapon using the existing projectile/collision pipeline.
 replace_once(
     "src/main.rs",
     """            PowerUpKind::Shrapnel => {
@@ -201,18 +208,4 @@ replace_once(
             }
             PowerUpKind::Shrapnel => {
                 for _ in 0..5 {""",
-)
-replace_once(
-    "src/main.rs",
-    """        self.weapon_uses[index] = self.weapon_uses[index].saturating_sub(1);""",
-    """        self.weapon_uses[index] = self.weapon_uses[index].saturating_sub(1);""",
-)
-
-# Use the Mine as a one-shot pickup like the other tactical weapons.
-replace_once(
-    "src/main.rs",
-    """                        PowerUpKind::MachineGun => 8,
-                        _ => 1,""",
-    """                        PowerUpKind::MachineGun => 8,
-                        _ => 1,""",
 )
