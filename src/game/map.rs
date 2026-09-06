@@ -33,14 +33,9 @@ pub struct Wall {
     pub max: Vec2,
 }
 impl Wall {
-    pub const fn new(min: Vec2, max: Vec2) -> Self {
-        Self { min, max }
-    }
+    pub const fn new(min: Vec2, max: Vec2) -> Self { Self { min, max } }
     pub fn contains(&self, point: Vec2) -> bool {
-        point.x >= self.min.x
-            && point.x <= self.max.x
-            && point.y >= self.min.y
-            && point.y <= self.max.y
+        point.x >= self.min.x && point.x <= self.max.x && point.y >= self.min.y && point.y <= self.max.y
     }
 }
 
@@ -55,11 +50,32 @@ pub struct GameMap {
 
 impl GameMap {
     pub fn rectangular(size: MapSize) -> Self {
-        Self::generate(size)
+        let (cells_x, cells_y) = size.dimensions();
+        let width = cells_x as f32 * 32.0;
+        let height = cells_y as f32 * 32.0;
+        let thickness = 14.0;
+        let walls = vec![
+            Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
+            Wall::new(Vec2::new(0.0, height - thickness), Vec2::new(width, height)),
+            Wall::new(Vec2::new(0.0, 0.0), Vec2::new(thickness, height)),
+            Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
+        ];
+        let spawn_points = vec![
+            Vec2::new(96.0, 96.0),
+            Vec2::new(width - 96.0, 96.0),
+            Vec2::new(96.0, height - 96.0),
+            Vec2::new(width - 96.0, height - 96.0),
+            Vec2::new(width * 0.5, 96.0),
+            Vec2::new(width * 0.5, height - 96.0),
+            Vec2::new(96.0, height * 0.5),
+            Vec2::new(width - 96.0, height * 0.5),
+            Vec2::new(width * 0.35, height * 0.35),
+            Vec2::new(width * 0.65, height * 0.65),
+        ];
+        Self { size, width, height, walls, spawn_points }
     }
-    pub fn generate(size: MapSize) -> Self {
-        Self::generate_seeded(size, size.seed())
-    }
+
+    pub fn generate(size: MapSize) -> Self { Self::generate_seeded(size, size.seed()) }
 
     pub fn generate_seeded(size: MapSize, initial_seed: u32) -> Self {
         let (cells_x_total, cells_y_total) = size.dimensions();
@@ -93,20 +109,12 @@ impl GameMap {
             ] {
                 let nx = x as isize + dx;
                 let ny = y as isize + dy;
-                if nx >= 0
-                    && ny >= 0
-                    && (nx as usize) < rooms_x
-                    && (ny as usize) < rooms_y
-                    && !visited[ny as usize * rooms_x + nx as usize]
-                {
+                if nx >= 0 && ny >= 0 && (nx as usize) < rooms_x && (ny as usize) < rooms_y && !visited[ny as usize * rooms_x + nx as usize] {
                     options[count] = (nx as usize, ny as usize, direction, opposite);
                     count += 1;
                 }
             }
-            if count == 0 {
-                stack.pop();
-                continue;
-            }
+            if count == 0 { stack.pop(); continue; }
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let (nx, ny, direction, opposite) = options[(seed as usize) % count];
             let current = y * rooms_x + x;
@@ -117,9 +125,6 @@ impl GameMap {
             stack.push((nx, ny));
         }
 
-        // Start from a connected spanning graph, then repeatedly open random
-        // links until only a light set of cover walls remains. This is much
-        // closer to Tank Trouble's open arenas than a dense classic maze.
         let extra_openings = room_count * 2;
         for _ in 0..extra_openings {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
@@ -151,104 +156,36 @@ impl GameMap {
                 let top = 16.0 + y as f32 * cell * 2.0;
                 if x + 1 < rooms_x && !passages[index][1] {
                     let wall_x = left + cell * 2.0;
-                    walls.push(Wall::new(
-                        Vec2::new(wall_x - thickness / 2.0, top),
-                        Vec2::new(wall_x + thickness / 2.0, top + cell * 2.0),
-                    ));
+                    walls.push(Wall::new(Vec2::new(wall_x - thickness / 2.0, top), Vec2::new(wall_x + thickness / 2.0, top + cell * 2.0)));
                 }
                 if y + 1 < rooms_y && !passages[index][2] {
                     let wall_y = top + cell * 2.0;
-                    walls.push(Wall::new(
-                        Vec2::new(left, wall_y - thickness / 2.0),
-                        Vec2::new(left + cell * 2.0, wall_y + thickness / 2.0),
-                    ));
+                    walls.push(Wall::new(Vec2::new(left, wall_y - thickness / 2.0), Vec2::new(left + cell * 2.0, wall_y + thickness / 2.0)));
                 }
             }
         }
 
-        let mut candidates = vec![
-            (0usize, 0usize),
-            (rooms_x - 1, 0),
-            (0, rooms_y - 1),
-            (rooms_x - 1, rooms_y - 1),
-            (rooms_x / 2, 0),
-            (rooms_x / 2, rooms_y - 1),
-            (0, rooms_y / 2),
-            (rooms_x - 1, rooms_y / 2),
-            (rooms_x / 3, rooms_y / 3),
-            ((rooms_x * 2) / 3, (rooms_y * 2) / 3),
-        ];
+        let mut candidates = vec![(0usize, 0usize),(rooms_x - 1, 0),(0, rooms_y - 1),(rooms_x - 1, rooms_y - 1),(rooms_x / 2, 0),(rooms_x / 2, rooms_y - 1),(0, rooms_y / 2),(rooms_x - 1, rooms_y / 2),(rooms_x / 3, rooms_y / 3),((rooms_x * 2) / 3, (rooms_y * 2) / 3)];
         for index in (1..candidates.len()).rev() {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             candidates.swap(index, (seed as usize) % (index + 1));
         }
-        let spawn_points = candidates
-            .into_iter()
-            .map(|(x, y)| {
-                Vec2::new(
-                    16.0 + x as f32 * cell * 2.0 + cell,
-                    16.0 + y as f32 * cell * 2.0 + cell,
-                )
-            })
-            .collect();
-        Self {
-            size,
-            width,
-            height,
-            walls,
-            spawn_points,
-        }
+        let spawn_points = candidates.into_iter().map(|(x, y)| Vec2::new(16.0 + x as f32 * cell * 2.0 + cell, 16.0 + y as f32 * cell * 2.0 + cell)).collect();
+        Self { size, width, height, walls, spawn_points }
     }
 
     pub fn is_inside_play_area(&self, point: Vec2, radius: f32) -> bool {
-        point.x - radius >= 16.0
-            && point.y - radius >= 16.0
-            && point.x + radius <= self.width - 16.0
-            && point.y + radius <= self.height - 16.0
+        point.x - radius >= 16.0 && point.y - radius >= 16.0 && point.x + radius <= self.width - 16.0 && point.y + radius <= self.height - 16.0
     }
-    pub fn spawn_points(&self) -> &[Vec2] {
-        &self.spawn_points
-    }
+    pub fn spawn_points(&self) -> &[Vec2] { &self.spawn_points }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn map_sizes_grow_monotonically() {
-        let a = MapSize::Small.dimensions();
-        let b = MapSize::VeryLarge.dimensions();
-        assert!(b.0 > a.0 && b.1 > a.1);
-    }
-    #[test]
-    fn generated_map_is_sparse_enough_for_open_combat() {
-        let map = GameMap::generate(MapSize::Medium);
-        assert!(map.walls.len() > 4);
-        assert!(map.walls.len() < 60);
-    }
-    #[test]
-    fn generated_map_has_ten_safe_spawns() {
-        let map = GameMap::generate(MapSize::Medium);
-        assert_eq!(map.spawn_points().len(), 10);
-        assert!(
-            map.spawn_points()
-                .iter()
-                .all(|&p| map.is_inside_play_area(p, 14.0)
-                    && !map.walls.iter().any(|w| w.contains(p)))
-        );
-    }
-    #[test]
-    fn generated_map_is_deterministic() {
-        let a = GameMap::generate(MapSize::Large);
-        let b = GameMap::generate(MapSize::Large);
-        assert_eq!(a.walls, b.walls);
-        assert_eq!(a.spawn_points, b.spawn_points);
-    }
-    #[test]
-    fn different_seeds_change_the_arena() {
-        let a = GameMap::generate_seeded(MapSize::Medium, 1);
-        let b = GameMap::generate_seeded(MapSize::Medium, 2);
-        assert_ne!(a.walls, b.walls);
-        assert_ne!(a.spawn_points, b.spawn_points);
-    }
+    #[test] fn map_sizes_grow_monotonically(){let a=MapSize::Small.dimensions();let b=MapSize::VeryLarge.dimensions();assert!(b.0>a.0&&b.1>a.1);}
+    #[test] fn generated_map_is_sparse_enough_for_open_combat(){let map=GameMap::generate(MapSize::Medium);assert!(map.walls.len()>4);assert!(map.walls.len()<60);}
+    #[test] fn generated_map_has_ten_safe_spawns(){let map=GameMap::generate(MapSize::Medium);assert_eq!(map.spawn_points().len(),10);assert!(map.spawn_points().iter().all(|&p|map.is_inside_play_area(p,14.0)&&!map.walls.iter().any(|w|w.contains(p))));}
+    #[test] fn generated_map_is_deterministic(){let a=GameMap::generate(MapSize::Large);let b=GameMap::generate(MapSize::Large);assert_eq!(a.walls,b.walls);assert_eq!(a.spawn_points,b.spawn_points);}
+    #[test] fn different_seeds_change_the_arena(){let a=GameMap::generate_seeded(MapSize::Medium,1);let b=GameMap::generate_seeded(MapSize::Medium,2);assert_ne!(a.walls,b.walls);assert_ne!(a.spawn_points,b.spawn_points);}
 }
