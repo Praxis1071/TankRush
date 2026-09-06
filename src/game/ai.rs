@@ -87,7 +87,8 @@ impl AiController {
         }
 
         let delta = angle_delta(desired_angle, tank.rotation_radians);
-        let aligned = angle_delta(direct_angle, tank.rotation_radians).abs() < 0.10;
+        let aim_delta = angle_delta(direct_angle, tank.rotation_radians);
+        let aligned = aim_delta.abs() < 0.10;
         let clear_shot = ricochet_can_hit(tank.position, tank.direction(), target.position, map);
         let fire = aligned && (clear_shot || distance < 120.0) && self.fire_cooldown <= 0.0;
 
@@ -96,7 +97,7 @@ impl AiController {
         }
 
         let obstacle_ahead = wall_ahead(tank.position, tank.direction(), map, 42.0);
-        let reverse = distance < 72.0 && aligned && !threat.is_sign_positive();
+        let reverse = distance < 72.0 && aligned && threat <= 0.0;
         TankInput {
             forward: !reverse && (!obstacle_ahead || delta.abs() > 0.45),
             backward: reverse,
@@ -295,13 +296,7 @@ mod tests {
         sim.state.add_tank(ai, Vec2::new(100.0, 100.0));
         sim.state.add_tank(enemy, Vec2::new(200.0, 100.0));
         let mut controller = AiController::default();
-        let input = controller.input(
-            &sim.state,
-            &sim.map,
-            &sim.config,
-            ai,
-            1.0 / 60.0,
-        );
+        let input = controller.input(&sim.state, &sim.map, &sim.config, ai, 1.0 / 60.0);
         assert!(input.right || input.forward || input.fire);
         assert_eq!(controller.target, Some(enemy));
     }
