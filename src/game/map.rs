@@ -26,10 +26,15 @@ pub struct Wall {
 }
 
 impl Wall {
-    pub const fn new(min: Vec2, max: Vec2) -> Self { Self { min, max } }
+    pub const fn new(min: Vec2, max: Vec2) -> Self {
+        Self { min, max }
+    }
 
     pub fn contains(&self, point: Vec2) -> bool {
-        point.x >= self.min.x && point.x <= self.max.x && point.y >= self.min.y && point.y <= self.max.y
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
     }
 }
 
@@ -50,9 +55,15 @@ impl GameMap {
         let thickness = 16.0;
         let walls = vec![
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
-            Wall::new(Vec2::new(0.0, height - thickness), Vec2::new(width, height)),
+            Wall::new(
+                Vec2::new(0.0, height - thickness),
+                Vec2::new(width, height),
+            ),
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(thickness, height)),
-            Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
+            Wall::new(
+                Vec2::new(width - thickness, 0.0),
+                Vec2::new(width, height),
+            ),
         ];
         let spawn_points = vec![
             Vec2::new(width * 0.2, height * 0.2),
@@ -60,14 +71,25 @@ impl GameMap {
             Vec2::new(width * 0.2, height * 0.8),
             Vec2::new(width * 0.8, height * 0.8),
         ];
-        Self { size, width, height, walls, spawn_points }
+        Self {
+            size,
+            width,
+            height,
+            walls,
+            spawn_points,
+        }
     }
 
     pub fn is_inside_play_area(&self, point: Vec2, radius: f32) -> bool {
-        point.x - radius >= 16.0 && point.y - radius >= 16.0 && point.x + radius <= self.width - 16.0 && point.y + radius <= self.height - 16.0
+        point.x - radius >= 16.0
+            && point.y - radius >= 16.0
+            && point.x + radius <= self.width - 16.0
+            && point.y + radius <= self.height - 16.0
     }
 
-    pub fn spawn_points(&self) -> &[Vec2] { &self.spawn_points }
+    pub fn spawn_points(&self) -> &[Vec2] {
+        &self.spawn_points
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +106,9 @@ mod tests {
     #[test]
     fn rectangular_map_has_safe_spawns() {
         let map = GameMap::rectangular(MapSize::Medium);
-        assert!(map.spawn_points().iter().all(|&p| map.is_inside_play_area(p, 14.0)));
+        assert!(map
+            .spawn_points()
+            .iter()
+            .all(|&p| map.is_inside_play_area(p, 14.0)));
     }
 }
