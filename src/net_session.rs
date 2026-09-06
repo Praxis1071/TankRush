@@ -39,8 +39,9 @@ impl AuthoritativeServer {
     ) -> io::Result<Self> {
         Ok(Self {
             transport: LanHost::bind(addr)?,
-            lobby: LobbyState::new(mode, team_count)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid lobby rules"))?,
+            lobby: LobbyState::new(mode, team_count).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "invalid lobby rules")
+            })?,
             simulation: GameSimulation::new(map, config),
             inputs: HashMap::new(),
             last_seen: HashMap::new(),
