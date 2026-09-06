@@ -1,4 +1,4 @@
-use super::{collision::segment_wall_hit, GameConfig, GameMap, GameState, PlayerId, Vec2};
+use super::{GameConfig, GameMap, GameState, PlayerId, Vec2, collision::segment_wall_hit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TankInput {
@@ -72,8 +72,7 @@ impl GameSimulation {
         let dt = self.config.fixed_timestep_seconds;
         let mut events = Vec::new();
         if self.fire_cooldowns.len() < self.state.players.len() {
-            self.fire_cooldowns
-                .resize(self.state.players.len(), 0.0);
+            self.fire_cooldowns.resize(self.state.players.len(), 0.0);
         }
         for cooldown in &mut self.fire_cooldowns {
             *cooldown = (*cooldown - dt).max(0.0);
