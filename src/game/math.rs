@@ -35,17 +35,23 @@ impl Vec2 {
 
 impl std::ops::Add for Vec2 {
     type Output = Self;
-    fn add(self, rhs: Self) -> Self { Self::new(self.x + rhs.x, self.y + rhs.y) }
+    fn add(self, rhs: Self) -> Self {
+        Self::new(self.x + rhs.x, self.y + rhs.y)
+    }
 }
 
 impl std::ops::Sub for Vec2 {
     type Output = Self;
-    fn sub(self, rhs: Self) -> Self { Self::new(self.x - rhs.x, self.y - rhs.y) }
+    fn sub(self, rhs: Self) -> Self {
+        Self::new(self.x - rhs.x, self.y - rhs.y)
+    }
 }
 
 impl std::ops::Mul<f32> for Vec2 {
     type Output = Self;
-    fn mul(self, rhs: f32) -> Self { Self::new(self.x * rhs, self.y * rhs) }
+    fn mul(self, rhs: f32) -> Self {
+        Self::new(self.x * rhs, self.y * rhs)
+    }
 }
 
 #[cfg(test)]
