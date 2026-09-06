@@ -20,29 +20,42 @@ pub struct Player {
 pub struct Tank {
     pub player_id: PlayerId,
     pub position: Vec2,
-    pub direction: Vec2,
+    pub rotation_radians: f32,
     pub alive: bool,
 }
 
 impl Tank {
     pub fn new(player_id: PlayerId, position: Vec2) -> Self {
-        Self {
-            player_id,
-            position,
-            direction: Vec2::new(1.0, 0.0),
-            alive: true,
-        }
+        Self { player_id, position, rotation_radians: 0.0, alive: true }
+    }
+
+    pub fn direction(&self) -> Vec2 {
+        Vec2::new(self.rotation_radians.cos(), self.rotation_radians.sin())
     }
 
     pub fn move_forward(&mut self, seconds: f32, config: &GameConfig) {
+        self.move_signed(1.0, seconds, config);
+    }
+
+    pub fn move_backward(&mut self, seconds: f32, config: &GameConfig) {
+        self.move_signed(-1.0, seconds, config);
+    }
+
+    fn move_signed(&mut self, direction: f32, seconds: f32, config: &GameConfig) {
         if self.alive {
-            self.position = self.position + self.direction.normalized() * (config.tank_speed * seconds);
+            self.position = self.position + self.direction() * (config.tank_speed * direction * seconds);
         }
     }
 
-    pub fn destroy(&mut self) {
-        self.alive = false;
+    pub fn turn_left(&mut self, seconds: f32, config: &GameConfig) {
+        if self.alive { self.rotation_radians -= config.tank_turn_speed_radians * seconds; }
     }
+
+    pub fn turn_right(&mut self, seconds: f32, config: &GameConfig) {
+        if self.alive { self.rotation_radians += config.tank_turn_speed_radians * seconds; }
+    }
+
+    pub fn destroy(&mut self) { self.alive = false; }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,9 +83,11 @@ impl Projectile {
         self.remaining_lifetime -= seconds;
     }
 
-    pub fn expired(&self) -> bool {
-        self.remaining_lifetime <= 0.0
+    pub fn bounce(&mut self, normal: Vec2) {
+        self.velocity = self.velocity.reflect(normal.normalized());
     }
+
+    pub fn expired(&self) -> bool { self.remaining_lifetime <= 0.0 }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -85,9 +100,7 @@ pub struct GameState {
 
 impl GameState {
     pub fn add_player(&mut self, name: impl Into<String>, team: Option<TeamId>) -> Option<PlayerId> {
-        if self.players.len() >= 10 {
-            return None;
-        }
+        if self.players.len() >= 10 { return None; }
         let id = PlayerId(self.players.len() as u8);
         self.players.push(Player { id, name: name.into(), team });
         Some(id)
@@ -99,21 +112,25 @@ impl GameState {
 
     pub fn fire(&mut self, player_id: PlayerId, config: &GameConfig) -> Option<ProjectileId> {
         let active_count = self.projectiles.iter().filter(|p| p.owner == player_id).count();
-        if active_count >= config.max_active_projectiles_per_tank {
-            return None;
-        }
+        if active_count >= config.max_active_projectiles_per_tank { return None; }
         let tank = self.tanks.iter().find(|t| t.player_id == player_id && t.alive)?;
         let id = ProjectileId(self.next_projectile_id);
         self.next_projectile_id = self.next_projectile_id.wrapping_add(1);
-        self.projectiles.push(Projectile::new(id, player_id, tank.position, tank.direction, config));
+        let spawn_position = tank.position + tank.direction() * (config.tank_radius + config.projectile_radius + 1.0);
+        self.projectiles.push(Projectile::new(id, player_id, spawn_position, tank.direction(), config));
         Some(id)
     }
 
     pub fn update_projectiles(&mut self, seconds: f32) {
-        for projectile in &mut self.projectiles {
-            projectile.update(seconds);
-        }
+        for projectile in &mut self.projectiles { projectile.update(seconds); }
         self.projectiles.retain(|projectile| !projectile.expired());
+    }
+
+    pub fn destroy_tank(&mut self, player_id: PlayerId) -> bool {
+        if let Some(tank) = self.tanks.iter_mut().find(|tank| tank.player_id == player_id && tank.alive) {
+            tank.destroy();
+            true
+        } else { false }
     }
 }
 
@@ -134,6 +151,14 @@ mod tests {
         let mut tank = Tank::new(PlayerId(0), Vec2::ZERO);
         tank.move_forward(1.0, &config);
         assert!((tank.position.x - config.tank_speed).abs() < 0.001);
+    }
+
+    #[test]
+    fn tank_rotation_changes_direction() {
+        let config = GameConfig::default();
+        let mut tank = Tank::new(PlayerId(0), Vec2::ZERO);
+        tank.turn_right(0.5, &config);
+        assert!(tank.direction().y > 0.0);
     }
 
     #[test]
@@ -158,9 +183,11 @@ mod tests {
     }
 
     #[test]
-    fn direct_hit_can_destroy_tank() {
-        let mut tank = Tank::new(PlayerId(0), Vec2::ZERO);
-        tank.destroy();
-        assert!(!tank.alive);
+    fn direct_hit_destroys_tank() {
+        let mut state = GameState::default();
+        let player = state.add_player("P1", None).unwrap();
+        state.add_tank(player, Vec2::ZERO);
+        assert!(state.destroy_tank(player));
+        assert!(!state.tanks[0].alive);
     }
 }
