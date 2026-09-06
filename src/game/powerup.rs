@@ -20,11 +20,11 @@ impl PowerUpKind {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::DoubleShot => "DOUBLE",
-            Self::MachineGun => "RAPID",
-            Self::Laser => "LASER",
-            Self::GuidedMissile => "GUIDED",
-            Self::Shrapnel => "FRAG",
+            Self::DoubleShot => "◆ DOUBLE",
+            Self::MachineGun => "▦ RAPID",
+            Self::Laser => "ϟ LASER",
+            Self::GuidedMissile => "➤ GUIDED",
+            Self::Shrapnel => "✣ FRAG",
         }
     }
 }
@@ -62,5 +62,12 @@ mod tests {
             PowerUp::generate(&map, &mut a),
             PowerUp::generate(&map, &mut b)
         );
+    }
+
+    #[test]
+    fn weapon_labels_include_visual_symbols() {
+        for kind in PowerUpKind::ALL {
+            assert!(kind.label().chars().count() > 3);
+        }
     }
 }
