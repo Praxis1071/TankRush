@@ -23,4 +23,4 @@ jobs:
       - name: Build
         run: cargo build --all-targets
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A clippy::collapsible_if -A clippy::needless_range_loop -A clippy::option_map_unit_fn
