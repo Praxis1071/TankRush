@@ -22,7 +22,10 @@ const PLAYER_COLORS: [(f64, f64, f64); 4] = [
     (1.0, 0.80, 0.25),
 ];
 
-fn build_settings_window(parent: &ApplicationWindow, audio: Rc<RefCell<game::config::AudioSettings>>) {
+fn build_settings_window(
+    parent: &ApplicationWindow,
+    audio: Rc<RefCell<game::config::AudioSettings>>,
+) {
     let music = CheckButton::with_label("Music");
     let effects = CheckButton::with_label("Sound effects");
     music.set_active(audio.borrow().music_enabled);
@@ -167,7 +170,12 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     context.scale(scale, scale);
 
     context.set_source_rgb(0.07, 0.10, 0.12);
-    context.rectangle(0.0, 0.0, simulation.map.width as f64, simulation.map.height as f64);
+    context.rectangle(
+        0.0,
+        0.0,
+        simulation.map.width as f64,
+        simulation.map.height as f64,
+    );
     context.fill().ok();
 
     context.set_source_rgb(0.18, 0.22, 0.25);
@@ -226,7 +234,12 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     );
     context.set_font_size(16.0);
     context.move_to(16.0, 26.0);
-    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
+    let alive = simulation
+        .state
+        .tanks
+        .iter()
+        .filter(|tank| tank.alive)
+        .count();
     context
         .show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
         .ok();
