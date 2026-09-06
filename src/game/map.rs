@@ -60,15 +60,9 @@ impl GameMap {
         let thickness = 16.0;
         let mut walls = vec![
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
-            Wall::new(
-                Vec2::new(0.0, height - thickness),
-                Vec2::new(width, height),
-            ),
+            Wall::new(Vec2::new(0.0, height - thickness), Vec2::new(width, height)),
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(thickness, height)),
-            Wall::new(
-                Vec2::new(width - thickness, 0.0),
-                Vec2::new(width, height),
-            ),
+            Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
         ];
 
         let barrier_gap = 3u32;
@@ -163,9 +157,6 @@ mod tests {
     #[test]
     fn generated_map_has_safe_spawns() {
         let map = GameMap::generate(MapSize::Medium);
-        assert!(map
-            .spawn_points()
-            .iter()
-            .all(|&p| map.is_inside_play_area(p, 14.0)));
+        assert!(map.spawn_points().iter().all(|&p| map.is_inside_play_area(p, 14.0)));
     }
 }
