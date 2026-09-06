@@ -19,7 +19,9 @@ pub struct LobbyState {
 
 impl LobbyState {
     pub fn new(mode: GameMode, team_count: usize) -> Option<Self> {
-        if matches!(mode, GameMode::TeamBattle) && !(2..=MAX_LOBBY_PLAYERS).contains(&team_count) {
+        if matches!(mode, GameMode::TeamBattle)
+            && !(2..=MAX_LOBBY_PLAYERS).contains(&team_count)
+        {
             return None;
         }
         Some(Self {
