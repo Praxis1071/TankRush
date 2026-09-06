@@ -1,7 +1,10 @@
 use super::{GameConfig, GameState, PlayerId, TeamId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GameMode { FreeForAll, TeamBattle }
+pub enum GameMode {
+    FreeForAll,
+    TeamBattle,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GameRules {
@@ -12,43 +15,99 @@ pub struct GameRules {
 
 impl GameRules {
     pub const fn single_player(mode: GameMode) -> Self {
-        Self { mode, max_players: 4, team_count: if matches!(mode, GameMode::TeamBattle) { 2 } else { 0 } }
+        Self {
+            mode,
+            max_players: 4,
+            team_count: if matches!(mode, GameMode::TeamBattle) {
+                2
+            } else {
+                0
+            },
+        }
     }
 
     pub const fn lan(mode: GameMode) -> Self {
-        Self { mode, max_players: 10, team_count: if matches!(mode, GameMode::TeamBattle) { 2 } else { 0 } }
+        Self {
+            mode,
+            max_players: 10,
+            team_count: if matches!(mode, GameMode::TeamBattle) {
+                2
+            } else {
+                0
+            },
+        }
     }
 
     pub fn with_team_count(mut self, team_count: usize) -> Option<Self> {
-        if !matches!(self.mode, GameMode::TeamBattle) || !(2..=self.max_players.min(4)).contains(&team_count) { return None; }
+        if !matches!(self.mode, GameMode::TeamBattle)
+            || !(2..=self.max_players).contains(&team_count)
+        {
+            return None;
+        }
         self.team_count = team_count;
         Some(self)
     }
 
     pub fn can_fire(state: &GameState, player_id: PlayerId, config: &GameConfig) -> bool {
-        state.tanks.iter().any(|tank| tank.player_id == player_id && tank.alive)
-            && state.projectiles.iter().filter(|p| p.owner == player_id).count() < config.max_active_projectiles_per_tank
+        state
+            .tanks
+            .iter()
+            .any(|tank| tank.player_id == player_id && tank.alive)
+            && state
+                .projectiles
+                .iter()
+                .filter(|p| p.owner == player_id)
+                .count()
+                < config.max_active_projectiles_per_tank
     }
 
     pub fn winner(&self, state: &GameState) -> Option<Vec<TeamId>> {
-        let alive: Vec<PlayerId> = state.tanks.iter().filter(|tank| tank.alive).map(|tank| tank.player_id).collect();
-        if alive.is_empty() { return None; }
+        let alive: Vec<PlayerId> = state
+            .tanks
+            .iter()
+            .filter(|tank| tank.alive)
+            .map(|tank| tank.player_id)
+            .collect();
+        if alive.is_empty() {
+            return None;
+        }
         match self.mode {
-            GameMode::FreeForAll => if alive.len() == 1 { Some(vec![]) } else { None },
+            GameMode::FreeForAll => {
+                if alive.len() == 1 {
+                    Some(vec![])
+                } else {
+                    None
+                }
+            }
             GameMode::TeamBattle => {
                 let mut teams = Vec::new();
                 for player_id in alive {
-                    if let Some(team) = state.players.iter().find(|player| player.id == player_id).and_then(|p| p.team) {
-                        if !teams.contains(&team) { teams.push(team); }
+                    if let Some(team) = state
+                        .players
+                        .iter()
+                        .find(|player| player.id == player_id)
+                        .and_then(|p| p.team)
+                    {
+                        if !teams.contains(&team) {
+                            teams.push(team);
+                        }
                     }
                 }
-                if teams.len() == 1 { Some(teams) } else { None }
+                if teams.len() == 1 {
+                    Some(teams)
+                } else {
+                    None
+                }
             }
         }
     }
 
     pub fn assign_balanced_team(player_index: usize, team_count: usize) -> Option<TeamId> {
-        if team_count < 2 { None } else { Some(TeamId((player_index % team_count) as u8)) }
+        if team_count < 2 {
+            None
+        } else {
+            Some(TeamId((player_index % team_count) as u8))
+        }
     }
 }
 
@@ -57,16 +116,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn single_player_has_four_player_limit() { assert_eq!(GameRules::single_player(GameMode::FreeForAll).max_players, 4); }
+    fn single_player_has_four_player_limit() {
+        assert_eq!(
+            GameRules::single_player(GameMode::FreeForAll).max_players,
+            4
+        );
+    }
 
     #[test]
-    fn lan_has_ten_player_limit() { assert_eq!(GameRules::lan(GameMode::TeamBattle).max_players, 10); }
+    fn lan_has_ten_player_limit() {
+        assert_eq!(GameRules::lan(GameMode::TeamBattle).max_players, 10);
+    }
 
     #[test]
     fn team_count_is_validated() {
         let rules = GameRules::lan(GameMode::TeamBattle);
         assert!(rules.with_team_count(2).is_some());
-        assert!(rules.with_team_count(10).is_none());
+        assert!(rules.with_team_count(10).is_some());
+        assert!(rules.with_team_count(1).is_none());
     }
 
     #[test]
