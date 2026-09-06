@@ -110,12 +110,13 @@ impl GameMap {
             row_index += 1;
         }
 
-        let spawn_points = vec![
-            Vec2::new(width * 0.2, height * 0.2),
-            Vec2::new(width * 0.8, height * 0.2),
-            Vec2::new(width * 0.2, height * 0.8),
-            Vec2::new(width * 0.8, height * 0.8),
-        ];
+        let spawn_points = (0..5)
+            .flat_map(|index| {
+                let x = 64.0 + (width - 128.0) * index as f32 / 4.0;
+                [Vec2::new(x, 64.0), Vec2::new(x, height - 64.0)]
+            })
+            .collect();
+
         Self {
             size,
             width,
@@ -155,8 +156,9 @@ mod tests {
     }
 
     #[test]
-    fn generated_map_has_safe_spawns() {
+    fn generated_map_has_ten_safe_spawns() {
         let map = GameMap::generate(MapSize::Medium);
+        assert_eq!(map.spawn_points().len(), 10);
         assert!(
             map.spawn_points()
                 .iter()
