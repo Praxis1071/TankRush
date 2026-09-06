@@ -9,17 +9,31 @@ pub struct RoundState {
 
 impl RoundState {
     pub fn new() -> Self {
-        Self { round: 1, scores: [0; 4], intermission_seconds: 0.0 }
+        Self {
+            round: 1,
+            scores: [0; 4],
+            intermission_seconds: 0.0,
+        }
     }
 
     pub fn winner(state: &GameState) -> Option<PlayerId> {
-        let alive = state.tanks.iter().filter(|tank| tank.alive).collect::<Vec<_>>();
-        if alive.len() == 1 { Some(alive[0].player_id) } else { None }
+        let alive = state
+            .tanks
+            .iter()
+            .filter(|tank| tank.alive)
+            .collect::<Vec<_>>();
+        if alive.len() == 1 {
+            Some(alive[0].player_id)
+        } else {
+            None
+        }
     }
 
     pub fn award(&mut self, player_id: PlayerId) {
         let index = player_id.0 as usize;
-        if index < self.scores.len() { self.scores[index] += 1; }
+        if index < self.scores.len() {
+            self.scores[index] += 1;
+        }
         self.intermission_seconds = 2.5;
     }
 

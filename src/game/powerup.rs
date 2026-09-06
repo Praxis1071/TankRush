@@ -41,7 +41,10 @@ impl PowerUp {
         let index = (*seed as usize) % map.spawn_points().len();
         *seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         let kind = PowerUpKind::ALL[(*seed as usize) % PowerUpKind::ALL.len()];
-        Self { position: map.spawn_points()[index], kind }
+        Self {
+            position: map.spawn_points()[index],
+            kind,
+        }
     }
 }
 
@@ -55,6 +58,9 @@ mod tests {
         let map = GameMap::generate(MapSize::Medium);
         let mut a = 7;
         let mut b = 7;
-        assert_eq!(PowerUp::generate(&map, &mut a), PowerUp::generate(&map, &mut b));
+        assert_eq!(
+            PowerUp::generate(&map, &mut a),
+            PowerUp::generate(&map, &mut b)
+        );
     }
 }
