@@ -29,26 +29,38 @@ pub fn segment_wall_hit(start: Vec2, end: Vec2, wall: Wall) -> Option<CollisionH
         (1usize, wall.min.y, wall.max.y),
     ] {
         let component = if axis == 0 { delta.x } else { delta.y };
-        if component.abs() <= f32::EPSILON { continue; }
+        if component.abs() <= f32::EPSILON {
+            continue;
+        }
         for boundary in [min, max] {
             let start_component = if axis == 0 { start.x } else { start.y };
             let t = (boundary - start_component) / component;
-            if !(0.0..=1.0).contains(&t) { continue; }
+            if !(0.0..=1.0).contains(&t) {
+                continue;
+            }
             let point = start + delta * t;
             let inside_other_axis = if axis == 0 {
                 point.y >= wall.min.y && point.y <= wall.max.y
             } else {
                 point.x >= wall.min.x && point.x <= wall.max.x
             };
-            if !inside_other_axis { continue; }
+            if !inside_other_axis {
+                continue;
+            }
             let normal = match (axis, boundary == min) {
                 (0, true) => Vec2::new(-1.0, 0.0),
                 (0, false) => Vec2::new(1.0, 0.0),
                 (1, true) => Vec2::new(0.0, -1.0),
                 _ => Vec2::new(0.0, 1.0),
             };
-            let hit = CollisionHit { point, normal, distance: delta.length() * t };
-            if best.is_none_or(|current| hit.distance < current.distance) { best = Some(hit); }
+            let hit = CollisionHit {
+                point,
+                normal,
+                distance: delta.length() * t,
+            };
+            if best.is_none_or(|current| hit.distance < current.distance) {
+                best = Some(hit);
+            }
         }
     }
     best
