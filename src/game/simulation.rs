@@ -1,4 +1,4 @@
-use super::{GameConfig, GameMap, GameState, PlayerId, Vec2, collision::segment_wall_hit};
+use super::{collision::segment_wall_hit, GameConfig, GameMap, GameState, PlayerId, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TankInput {
@@ -40,6 +40,7 @@ pub struct GameSimulation {
     pub map: GameMap,
     pub config: GameConfig,
     accumulator: f32,
+    fire_cooldowns: Vec<f32>,
 }
 
 impl GameSimulation {
@@ -49,6 +50,7 @@ impl GameSimulation {
             map,
             config,
             accumulator: 0.0,
+            fire_cooldowns: Vec::new(),
         }
     }
 
@@ -69,6 +71,13 @@ impl GameSimulation {
     pub fn step(&mut self, inputs: &[(PlayerId, TankInput)]) -> Vec<SimulationEvent> {
         let dt = self.config.fixed_timestep_seconds;
         let mut events = Vec::new();
+        if self.fire_cooldowns.len() < self.state.players.len() {
+            self.fire_cooldowns
+                .resize(self.state.players.len(), 0.0);
+        }
+        for cooldown in &mut self.fire_cooldowns {
+            *cooldown = (*cooldown - dt).max(0.0);
+        }
 
         for &(player_id, input) in inputs {
             let Some(index) = self
@@ -115,7 +124,19 @@ impl GameSimulation {
             tank.rotation_radians = rotation;
             tank.position = new_position;
 
-            if input.fire && self.state.fire(player_id, &self.config).is_some() {
+            let player_index = player_id.0 as usize;
+            if input.fire
+                && self
+                    .fire_cooldowns
+                    .get(player_index)
+                    .copied()
+                    .unwrap_or_default()
+                    <= 0.0
+                && self.state.fire(player_id, &self.config).is_some()
+            {
+                if let Some(cooldown) = self.fire_cooldowns.get_mut(player_index) {
+                    *cooldown = self.config.fire_cooldown_seconds;
+                }
                 events.push(SimulationEvent {
                     player_id,
                     kind: SimulationEventKind::Fired,
@@ -285,5 +306,19 @@ mod tests {
             simulation.step(&[]);
         }
         assert!(!simulation.state.tanks[1].alive);
+    }
+
+    #[test]
+    fn fire_cooldown_blocks_rapid_standard_fire() {
+        let mut simulation =
+            GameSimulation::new(GameMap::rectangular(MapSize::Small), GameConfig::default());
+        let player = simulation.state.add_player("P1", None).unwrap();
+        simulation.state.add_tank(player, Vec2::new(100.0, 100.0));
+        let input = TankInput {
+            fire: true,
+            ..TankInput::idle()
+        };
+        assert_eq!(simulation.step(&[(player, input)]).len(), 1);
+        assert!(simulation.step(&[(player, input)]).is_empty());
     }
 }
