@@ -7,29 +7,27 @@ pub struct GameConfig {
     pub projectile_lifetime_seconds: f32,
     pub projectile_radius: f32,
     pub max_active_projectiles_per_tank: usize,
+    pub fire_cooldown_seconds: f32,
     pub fixed_timestep_seconds: f32,
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
-            // Tuned for a responsive arcade feel: Tank Trouble-style references
-            // commonly use ~120 px/s tanks and ~300 px/s shells.
             tank_speed: 120.0,
-            tank_turn_speed_radians: 3.6,
+            tank_turn_speed_radians: 4.0,
             tank_radius: 14.0,
             projectile_speed: 300.0,
-            // Shorter than the original 5 s value to reduce stale shots while
-            // preserving useful bank-shot opportunities on large arenas.
             projectile_lifetime_seconds: 4.5,
             projectile_radius: 3.0,
-            max_active_projectiles_per_tank: 8,
+            max_active_projectiles_per_tank: 5,
+            fire_cooldown_seconds: 0.5,
             fixed_timestep_seconds: 1.0 / 60.0,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioSettings {
     pub music_enabled: bool,
     pub sound_effects_enabled: bool,
@@ -59,9 +57,10 @@ mod tests {
     fn default_movement_and_projectile_rules_match_design() {
         let config = GameConfig::default();
         assert!((config.tank_speed - 120.0).abs() < f32::EPSILON);
-        assert!((config.tank_turn_speed_radians - 3.6).abs() < f32::EPSILON);
+        assert!((config.tank_turn_speed_radians - 4.0).abs() < f32::EPSILON);
         assert!((config.projectile_lifetime_seconds - 4.5).abs() < f32::EPSILON);
-        assert_eq!(config.max_active_projectiles_per_tank, 8);
+        assert_eq!(config.max_active_projectiles_per_tank, 5);
+        assert!((config.fire_cooldown_seconds - 0.5).abs() < f32::EPSILON);
     }
 
     #[test]
