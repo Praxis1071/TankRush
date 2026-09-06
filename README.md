@@ -123,3 +123,7 @@ Issues, bug reports and improvement ideas are welcome. Please keep gameplay logi
 ## License
 
 TankRush is free and open-source software distributed under the [MIT License](LICENSE).
+
+## Roadmap batch
+
+The full gameplay roadmap implementation is being applied directly on `main`, with Rust verification in GitHub Actions after each meaningful batch.
