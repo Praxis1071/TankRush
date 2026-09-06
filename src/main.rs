@@ -6,15 +6,15 @@ mod network;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use game::{GameConfig, GameMap, GameSimulation, MapSize, PlayerId, TankInput};
 use glib::{ControlFlow, Propagation};
 use gtk4::cairo::Context;
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText, DrawingArea,
-    Entry, EventControllerKey, Label, Orientation, SpinButton, Stack,
+    Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText,
+    DrawingArea, Entry, EventControllerKey, Label, Orientation, SpinButton, Stack,
 };
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
@@ -59,6 +59,13 @@ fn key_label(key: &str) -> String {
     }
 }
 
+fn arena_seed() -> u32 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos()
+}
+
 fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimulation) {
     let width = width as f64;
     let height = height as f64;
@@ -73,11 +80,14 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     context.scale(scale, scale);
 
     context.set_source_rgb(0.055, 0.075, 0.085);
-    context.rectangle(0.0, 0.0, simulation.map.width as f64, simulation.map.height as f64);
+    context.rectangle(
+        0.0,
+        0.0,
+        simulation.map.width as f64,
+        simulation.map.height as f64,
+    );
     context.fill().ok();
 
-    // Subtle floor grid keeps the open rooms readable without turning the map
-    // into the dense barcode-like maze from the previous version.
     context.set_source_rgb(0.065, 0.085, 0.095);
     context.set_line_width(1.0);
     let mut x = 16.0;
@@ -142,17 +152,30 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
         );
         context.stroke().ok();
 
-        if let Some(player) = simulation.state.players.iter().find(|p| p.id == tank.player_id) {
+        if let Some(player) = simulation
+            .state
+            .players
+            .iter()
+            .find(|player| player.id == tank.player_id)
+        {
             context.set_font_size(11.0);
             context.set_source_rgb(0.92, 0.94, 0.96);
-            context.move_to((tank.position.x - 22.0) as f64, (tank.position.y - 21.0) as f64);
+            context.move_to(
+                (tank.position.x - 22.0) as f64,
+                (tank.position.y - 21.0) as f64,
+            );
             context.show_text(&player.name).ok();
         }
     }
 
     context.restore().ok();
 
-    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
+    let alive = simulation
+        .state
+        .tanks
+        .iter()
+        .filter(|tank| tank.alive)
+        .count();
     context.set_source_rgb(0.93, 0.95, 0.97);
     context.select_font_face(
         "Sans",
@@ -161,7 +184,8 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     );
     context.set_font_size(17.0);
     context.move_to(18.0, 28.0);
-    context.show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
+    context
+        .show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
         .ok();
 
     if alive <= 1 && !simulation.state.tanks.is_empty() {
@@ -170,7 +194,13 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
             .tanks
             .iter()
             .find(|tank| tank.alive)
-            .and_then(|tank| simulation.state.players.iter().find(|p| p.id == tank.player_id));
+            .and_then(|tank| {
+                simulation
+                    .state
+                    .players
+                    .iter()
+                    .find(|player| player.id == tank.player_id)
+            });
         if let Some(player) = winner {
             context.set_font_size(24.0);
             context.move_to(24.0, height - 28.0);
@@ -185,9 +215,9 @@ fn build_game_screen(
     map_size: MapSize,
     names: Vec<String>,
     bindings: Vec<ControlBindings>,
-) -> Box {
+) -> (Box, DrawingArea) {
     let config = GameConfig::default();
-    let mut simulation = GameSimulation::new(GameMap::generate(map_size), config);
+    let mut simulation = GameSimulation::new(GameMap::generate_seeded(map_size, arena_seed()), config);
     let spawn_points = simulation.map.spawn_points().to_vec();
     for index in 0..player_count {
         let player_id = simulation
@@ -209,6 +239,7 @@ fn build_game_screen(
     toolbar.set_margin_bottom(8);
     toolbar.set_margin_start(10);
     toolbar.set_margin_end(10);
+
     let title = Label::new(Some("TankRush  •  Battle Arena"));
     title.set_hexpand(true);
     title.set_halign(gtk4::Align::Start);
@@ -223,6 +254,7 @@ fn build_game_screen(
     drawing_area.set_hexpand(true);
     drawing_area.set_vexpand(true);
     drawing_area.set_focusable(true);
+
     {
         let simulation = Rc::clone(&simulation);
         drawing_area.set_draw_func(move |_, context, width, height| {
@@ -245,7 +277,11 @@ fn build_game_screen(
             let mut pending = fire_pending.borrow_mut();
             let mut down = fire_down.borrow_mut();
             for player in 0..player_count {
-                let Some(action) = bindings[player].keys.iter().position(|key| key == &name) else {
+                let Some(action) = bindings[player]
+                    .keys
+                    .iter()
+                    .position(|binding| binding == &name)
+                else {
                     continue;
                 };
                 match action {
@@ -278,7 +314,11 @@ fn build_game_screen(
             let mut input = inputs.borrow_mut();
             let mut down = fire_down.borrow_mut();
             for player in 0..player_count {
-                let Some(action) = bindings[player].keys.iter().position(|key| key == &name) else {
+                let Some(action) = bindings[player]
+                    .keys
+                    .iter()
+                    .position(|binding| binding == &name)
+                else {
                     continue;
                 };
                 match action {
@@ -332,20 +372,27 @@ fn build_game_screen(
         stack_for_back.set_visible_child_name("menu");
     });
 
-    root
+    (root, drawing_area)
 }
 
-fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefCell<Vec<ControlBindings>>>) -> Box {
+fn build_setup_screen(
+    stack: &Stack,
+    player_count: SpinButton,
+    bindings: Rc<RefCell<Vec<ControlBindings>>>,
+) -> Box {
     let root = Box::new(Orientation::Vertical, 12);
     root.set_margin_top(28);
     root.set_margin_bottom(28);
     root.set_margin_start(36);
     root.set_margin_end(36);
+    root.set_focusable(true);
 
     let title = Label::new(Some("Local Battle Setup"));
     title.add_css_class("title-2");
     root.append(&title);
-    root.append(&Label::new(Some("TankTrouble-style local arena: 1–4 players, custom names and controls.")));
+    root.append(&Label::new(Some(
+        "TankTrouble-style local arena: 1–4 players, custom names and controls.",
+    )));
 
     let players_adjustment = Adjustment::new(2.0, 1.0, 4.0, 1.0, 1.0, 0.0);
     player_count.set_adjustment(&players_adjustment);
@@ -362,15 +409,19 @@ fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefC
     root.append(&maps);
 
     let setup_grid = Box::new(Orientation::Vertical, 7);
-    let pending = Rc::new(RefCell::new(None::<(usize, usize)>));
-    let pending_label = Label::new(Some("Choose a control button, then press a key. Escape cancels."));
+    let pending = Rc::new(RefCell::new(None::<(usize, usize, Button)>));
+    let pending_label = Label::new(Some(
+        "Choose a control button, then press a key. Escape cancels.",
+    ));
     pending_label.add_css_class("dim-label");
+    let mut name_entries = Vec::new();
 
     for player in 0..4 {
         let row = Box::new(Orientation::Horizontal, 7);
         let name = Entry::new();
         name.set_text(&format!("Player {}", player + 1));
         name.set_width_chars(14);
+        name_entries.push(name.clone());
         row.append(&Label::new(Some(&format!("P{}", player + 1))));
         row.append(&name);
 
@@ -381,20 +432,22 @@ fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefC
             let pending = Rc::clone(&pending);
             let pending_label = pending_label.clone();
             button.connect_clicked(move |button| {
-                *pending.borrow_mut() = Some((player, action));
-                pending_label.set_text(&format!("P{} {}: press the new key…", player + 1, actions[action]));
-                button.add_css_class("suggested-action");
+                *pending.borrow_mut() = Some((player, action, button.clone()));
+                pending_label.set_text(&format!(
+                    "P{} {}: press the new key…",
+                    player + 1,
+                    actions[action]
+                ));
             });
             row.append(&button);
         }
         setup_grid.append(&row);
     }
+
     root.append(&Label::new(Some("Player names and controls")));
     root.append(&setup_grid);
     root.append(&pending_label);
 
-    // Key capture stays inside the setup page, so control assignment no longer
-    // creates another GTK window.
     let key_controller = EventControllerKey::new();
     {
         let pending = Rc::clone(&pending);
@@ -410,10 +463,14 @@ fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefC
                 pending_label.set_text("Control assignment cancelled.");
                 return Propagation::Stop;
             }
-            if let Some((player, action)) = *pending.borrow() {
+            if let Some((player, action, button)) = pending.borrow_mut().take() {
                 bindings.borrow_mut()[player].keys[action] = name.clone();
-                pending_label.set_text(&format!("P{} control changed to {}.", player + 1, key_label(&name)));
-                *pending.borrow_mut() = None;
+                button.set_label(&key_label(&name));
+                pending_label.set_text(&format!(
+                    "P{} control changed to {}.",
+                    player + 1,
+                    key_label(&name)
+                ));
             }
             Propagation::Stop
         });
@@ -441,11 +498,21 @@ fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefC
             Some("Very Large Arena") => MapSize::VeryLarge,
             _ => MapSize::Small,
         };
-        let mut names = Vec::with_capacity(count);
-        for index in 0..count {
-            names.push(format!("Player {}", index + 1));
-        }
-        let game = build_game_screen(
+        let names = name_entries
+            .iter()
+            .take(count)
+            .enumerate()
+            .map(|(index, entry)| {
+                let name = entry.text().trim().to_string();
+                if name.is_empty() {
+                    format!("Player {}", index + 1)
+                } else {
+                    name.chars().take(18).collect()
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let (game, drawing_area) = build_game_screen(
             &stack_for_start,
             count,
             map_size,
@@ -457,7 +524,7 @@ fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefC
         }
         stack_for_start.add_named(&game, Some("game"));
         stack_for_start.set_visible_child_name("game");
-        game.grab_focus();
+        drawing_area.grab_focus();
     });
 
     root
@@ -492,10 +559,14 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
     content.append(&quit);
 
     let stack_for_single = stack.clone();
-    single_player.connect_clicked(move |_| stack_for_single.set_visible_child_name("setup"));
+    single_player.connect_clicked(move |_| {
+        stack_for_single.set_visible_child_name("setup");
+    });
 
     let stack_for_lan = stack.clone();
-    lan.connect_clicked(move |_| stack_for_lan.set_visible_child_name("lan"));
+    lan.connect_clicked(move |_| {
+        stack_for_lan.set_visible_child_name("lan");
+    });
 
     let stack_for_settings = stack.clone();
     let audio_for_settings = Rc::clone(&audio);
@@ -509,24 +580,31 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         page.set_margin_end(36);
         page.set_margin_bottom(32);
         page.append(&Label::new(Some("Settings")));
+
         let music = CheckButton::with_label("Music");
         let effects = CheckButton::with_label("Sound effects");
         music.set_active(audio_for_settings.borrow().music_enabled);
         effects.set_active(audio_for_settings.borrow().sound_effects_enabled);
         {
             let audio = Rc::clone(&audio_for_settings);
-            music.connect_toggled(move |button| audio.borrow_mut().music_enabled = button.is_active());
+            music.connect_toggled(move |button| {
+                audio.borrow_mut().music_enabled = button.is_active();
+            });
         }
         {
             let audio = Rc::clone(&audio_for_settings);
-            effects.connect_toggled(move |button| audio.borrow_mut().sound_effects_enabled = button.is_active());
+            effects.connect_toggled(move |button| {
+                audio.borrow_mut().sound_effects_enabled = button.is_active();
+            });
         }
         page.append(&music);
         page.append(&effects);
+
         let back = Button::with_label("Back");
         let stack = stack_for_settings.clone();
         back.connect_clicked(move |_| stack.set_visible_child_name("menu"));
         page.append(&back);
+
         stack_for_settings.add_named(&page, Some("settings"));
         stack_for_settings.set_visible_child_name("settings");
     });
@@ -534,7 +612,9 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
     let stack_for_quit = stack.clone();
     quit.connect_clicked(move |_| {
         if let Some(root) = stack_for_quit.root() {
-            root.downcast::<ApplicationWindow>().ok().map(|window| window.close());
+            root.downcast::<ApplicationWindow>()
+                .ok()
+                .map(|window| window.close());
         }
     });
 
@@ -567,7 +647,9 @@ fn build_ui(app: &Application) {
         network::PROTOCOL_VERSION,
         lobby::MAX_LOBBY_PLAYERS
     ))));
-    lan.append(&Label::new(Some("Network gameplay is being integrated after the local arena core.")));
+    lan.append(&Label::new(Some(
+        "Network gameplay is being integrated after the local arena core.",
+    )));
     let lan_back = Button::with_label("Back");
     let stack_for_lan = stack.clone();
     lan_back.connect_clicked(move |_| stack_for_lan.set_visible_child_name("menu"));
