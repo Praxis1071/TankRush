@@ -146,7 +146,7 @@ impl GameMap {
             stack.push((nx, ny));
         }
 
-        let extra_openings = room_count * 2;
+        let extra_openings = room_count * 3;
         for _ in 0..extra_openings {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let x = (seed as usize) % rooms_x;

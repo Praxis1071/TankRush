@@ -87,10 +87,18 @@ struct MatchRuntime {
     draw_round: bool,
     respawn_countdown: f32,
     paused: bool,
+    guided_projectiles: Vec<game::ProjectileId>,
+    powerups_enabled: bool,
 }
 
 impl MatchRuntime {
-    fn new(human_count: usize, map_size: MapSize, names: Vec<String>, seed: u32) -> Self {
+    fn new(
+        human_count: usize,
+        map_size: MapSize,
+        names: Vec<String>,
+        seed: u32,
+        powerups_enabled: bool,
+    ) -> Self {
         let mut runtime = Self {
             simulation: GameSimulation::new(
                 GameMap::generate_seeded(map_size, seed),
@@ -110,6 +118,8 @@ impl MatchRuntime {
             draw_round: false,
             respawn_countdown: 0.0,
             paused: false,
+            guided_projectiles: Vec::new(),
+            powerups_enabled,
         };
         runtime.spawn_round(seed);
         runtime
@@ -127,6 +137,7 @@ impl MatchRuntime {
         self.weapon_uses = [0; 4];
         self.ai_id = None;
         self.paused = false;
+        self.guided_projectiles.clear();
         let spawns = self.simulation.map.spawn_points().to_vec();
         for index in 0..self.human_count {
             let id = self
@@ -145,11 +156,13 @@ impl MatchRuntime {
             self.ai = Some(AiController::default());
         }
         self.powerups.clear();
-        while self.powerups.len() < 5 {
-            self.powerups.push(PowerUp::generate(
-                &self.simulation.map,
-                &mut self.powerup_seed,
-            ));
+        if self.powerups_enabled {
+            while self.powerups.len() < 5 {
+                self.powerups.push(PowerUp::generate(
+                    &self.simulation.map,
+                    &mut self.powerup_seed,
+                ));
+            }
         }
     }
 
@@ -178,6 +191,7 @@ impl MatchRuntime {
                     &self.simulation.state,
                     &self.simulation.map,
                     &self.simulation.config,
+                    &self.powerups,
                     ai_id,
                     dt,
                 ),
@@ -244,6 +258,7 @@ impl MatchRuntime {
                 {
                     projectile.velocity = projectile.velocity * 0.92;
                     projectile.remaining_lifetime = 5.0;
+                    self.guided_projectiles.push(projectile.id);
                 }
             }
             PowerUpKind::Shrapnel => {
@@ -282,6 +297,9 @@ impl MatchRuntime {
     }
 
     fn collect_powerups(&mut self) {
+        if !self.powerups_enabled {
+            return;
+        }
         let mut collected = Vec::new();
         for (index, powerup) in self.powerups.iter().enumerate() {
             if let Some(tank) = self
@@ -314,35 +332,39 @@ impl MatchRuntime {
     }
 
     fn guide_projectiles(&mut self) {
+        self.guided_projectiles.retain(|id| {
+            self.simulation
+                .state
+                .projectiles
+                .iter()
+                .any(|projectile| projectile.id == *id)
+        });
+        let targets = self
+            .simulation
+            .state
+            .tanks
+            .iter()
+            .filter(|tank| tank.alive)
+            .map(|tank| (tank.player_id, tank.position))
+            .collect::<Vec<_>>();
         for projectile in &mut self.simulation.state.projectiles {
-            let Some(owner_tank) = self
-                .simulation
-                .state
-                .tanks
-                .iter()
-                .find(|t| t.player_id == projectile.owner)
-            else {
+            if !self.guided_projectiles.contains(&projectile.id) {
                 continue;
-            };
-            let Some(target) = self
-                .simulation
-                .state
-                .tanks
+            }
+            let Some((_, target_position)) = targets
                 .iter()
-                .filter(|t| t.alive && t.player_id != projectile.owner)
+                .filter(|(id, _)| *id != projectile.owner)
                 .min_by(|a, b| {
-                    ((a.position - projectile.position).length())
-                        .total_cmp(&((b.position - projectile.position).length()))
+                    ((a.1 - projectile.position).length())
+                        .total_cmp(&((b.1 - projectile.position).length()))
                 })
             else {
                 continue;
             };
-            if self.weapons[owner_tank.player_id.0 as usize] == Some(PowerUpKind::GuidedMissile) {
-                let desired = (target.position - projectile.position).normalized();
-                let speed = projectile.velocity.length();
-                projectile.velocity =
-                    (projectile.velocity.normalized() * 0.88 + desired * 0.12).normalized() * speed;
-            }
+            let desired = (*target_position - projectile.position).normalized();
+            let speed = projectile.velocity.length();
+            projectile.velocity =
+                (projectile.velocity.normalized() * 0.84 + desired * 0.16).normalized() * speed;
         }
     }
 
@@ -452,6 +474,15 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
     }
 
     for projectile in &simulation.state.projectiles {
+        let velocity = projectile.velocity.normalized();
+        context.set_source_rgba(1.0, 0.78, 0.16, 0.22);
+        context.set_line_width(2.5);
+        context.move_to(
+            (projectile.position.x - velocity.x * 12.0) as f64,
+            (projectile.position.y - velocity.y * 12.0) as f64,
+        );
+        context.line_to(projectile.position.x as f64, projectile.position.y as f64);
+        context.stroke().ok();
         context.set_source_rgb(1.0, 0.84, 0.22);
         context.arc(
             projectile.position.x as f64,
@@ -464,36 +495,82 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
     }
     for tank in &simulation.state.tanks {
         if !tank.alive {
+            context.set_source_rgba(0.10, 0.10, 0.10, 0.24);
+            context.arc(
+                tank.position.x as f64,
+                tank.position.y as f64,
+                18.0,
+                0.0,
+                std::f64::consts::TAU,
+            );
+            context.fill().ok();
             continue;
         }
         let color = if runtime.ai_id == Some(tank.player_id) {
-            (0.36, 0.37, 0.39)
+            (0.38, 0.39, 0.41)
         } else {
             PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()]
         };
-        context.set_source_rgb(color.0, color.1, color.2);
         context.save().ok();
         context.translate(tank.position.x as f64, tank.position.y as f64);
         context.rotate(tank.rotation_radians as f64);
-        context.rectangle(-16.0, -12.0, 32.0, 24.0);
+
+        // Ground shadow and heavy tracks.
+        context.set_source_rgba(0.02, 0.03, 0.04, 0.28);
+        context.rectangle(-19.0, -14.0, 38.0, 28.0);
         context.fill().ok();
-        context.restore().ok();
-        let direction = tank.direction();
+        context.set_source_rgb(0.08, 0.09, 0.10);
+        context.rectangle(-18.0, -14.0, 36.0, 5.0);
+        context.rectangle(-18.0, 9.0, 36.0, 5.0);
+        context.fill().ok();
+
+        // Armored hull and color identification band.
+        context.set_source_rgb(color.0 * 0.78, color.1 * 0.78, color.2 * 0.78);
+        context.rectangle(-15.0, -10.0, 30.0, 20.0);
+        context.fill().ok();
+        context.set_source_rgb(color.0, color.1, color.2);
+        context.rectangle(-14.0, -8.0, 28.0, 5.0);
+        context.fill().ok();
+
+        // Turret ring and hatch.
+        context.set_source_rgb(0.16, 0.17, 0.18);
+        context.arc(0.0, 0.0, 9.0, 0.0, std::f64::consts::TAU);
+        context.fill().ok();
+        context.set_source_rgb(0.32, 0.33, 0.34);
+        context.arc(0.0, 0.0, 5.5, 0.0, std::f64::consts::TAU);
+        context.fill().ok();
+
+        // User-requested consistent black cannon silhouette.
+        context.set_source_rgb(0.015, 0.015, 0.018);
         context.set_line_width(7.0);
         context.set_line_cap(gtk4::cairo::LineCap::Round);
-        context.move_to(tank.position.x as f64, tank.position.y as f64);
-        context.line_to(
-            (tank.position.x + direction.x * 22.0) as f64,
-            (tank.position.y + direction.y * 22.0) as f64,
-        );
+        context.move_to(1.0, 0.0);
+        context.line_to(25.0, 0.0);
         context.stroke().ok();
-        context.set_source_rgb(0.92, 0.94, 0.96);
-        context.set_font_size(11.0);
-        context.move_to(
-            (tank.position.x - 22.0) as f64,
-            (tank.position.y - 21.0) as f64,
-        );
-        context.show_text(&runtime.player_name(tank.player_id)).ok();
+        context.set_source_rgb(0.35, 0.36, 0.37);
+        context.set_line_width(2.0);
+        context.move_to(10.0, 0.0);
+        context.line_to(25.0, 0.0);
+        context.stroke().ok();
+
+        if runtime.ai_id == Some(tank.player_id) {
+            // Laika gets subtle red sensor details.
+            context.set_source_rgb(0.70, 0.06, 0.07);
+            context.arc(0.0, -2.5, 1.5, 0.0, std::f64::consts::TAU);
+            context.arc(0.0, 2.5, 1.5, 0.0, std::f64::consts::TAU);
+            context.fill().ok();
+        }
+        context.restore().ok();
+
+        if runtime.ai_id != Some(tank.player_id) || tank.alive {
+            context.set_source_rgb(0.12, 0.14, 0.16);
+            context.set_font_size(11.0);
+            context.move_to(
+                (tank.position.x - 22.0) as f64,
+                (tank.position.y - 21.0) as f64,
+            );
+            context.show_text(&runtime.player_name(tank.player_id)).ok();
+        }
     }
     context.restore().ok();
 
@@ -564,12 +641,14 @@ fn build_game_screen(
     map_size: MapSize,
     names: Vec<String>,
     bindings: Vec<ControlBindings>,
+    powerups_enabled: bool,
 ) -> (Box, DrawingArea) {
     let runtime = Rc::new(RefCell::new(MatchRuntime::new(
         player_count,
         map_size,
         names,
         arena_seed(),
+        powerups_enabled,
     )));
     let inputs = Rc::new(RefCell::new([TankInput::idle(); 4]));
     let fire_pending = Rc::new(RefCell::new([false; 4]));
@@ -768,6 +847,10 @@ fn build_setup_screen(
     maps.set_active(Some(1));
     root.append(&Label::new(Some("Arena size")));
     root.append(&maps);
+    let powerups = CheckButton::with_label("Enable power-ups");
+    powerups.set_active(true);
+    powerups.set_tooltip_text(Some("Collect temporary weapons during the match."));
+    root.append(&powerups);
     let setup = Box::new(Orientation::Vertical, 7);
     let pending = Rc::new(RefCell::new(None::<(usize, usize, Button)>));
     let pending_label = Label::new(Some(
@@ -870,6 +953,7 @@ fn build_setup_screen(
             map_size,
             names,
             bindings_start.borrow().clone(),
+            powerups.is_active(),
         );
         if let Some(old) = stack_start.child_by_name("game") {
             stack_start.remove(&old);
