@@ -1,0 +1,12 @@
+[package]
+name = "tankrush"
+version = "0.1.0"
+edition = "2024"
+authors = ["Praxis1071"]
+description = "A Linux desktop tank arena game built with Rust and GTK4."
+license = "MIT"
+repository = "https://github.com/Praxis1071/TankRush"
+
+[dependencies]
+gtk4 = { version = "0.10", package = "gtk4" }
+glib = "0.21"
