@@ -7,15 +7,17 @@ pub enum PowerUpKind {
     Laser,
     GuidedMissile,
     Shrapnel,
+    Mine,
 }
 
 impl PowerUpKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::DoubleShot,
         Self::MachineGun,
         Self::Laser,
         Self::GuidedMissile,
         Self::Shrapnel,
+        Self::Mine,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -25,6 +27,7 @@ impl PowerUpKind {
             Self::Laser => "LASER",
             Self::GuidedMissile => "GUIDED",
             Self::Shrapnel => "FRAG",
+            Self::Mine => "MINE",
         }
     }
 }
@@ -62,5 +65,11 @@ mod tests {
             PowerUp::generate(&map, &mut a),
             PowerUp::generate(&map, &mut b)
         );
+    }
+
+    #[test]
+    fn all_weapon_kinds_have_stable_labels() {
+        assert_eq!(PowerUpKind::ALL.len(), 6);
+        assert_eq!(PowerUpKind::Mine.label(), "MINE");
     }
 }
