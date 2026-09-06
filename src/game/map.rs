@@ -157,6 +157,10 @@ mod tests {
     #[test]
     fn generated_map_has_safe_spawns() {
         let map = GameMap::generate(MapSize::Medium);
-        assert!(map.spawn_points().iter().all(|&p| map.is_inside_play_area(p, 14.0)));
+        assert!(
+            map.spawn_points()
+                .iter()
+                .all(|&p| map.is_inside_play_area(p, 14.0))
+        );
     }
 }
