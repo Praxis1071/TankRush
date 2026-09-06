@@ -62,6 +62,10 @@ impl GameMap {
     }
 
     pub fn generate(size: MapSize) -> Self {
+        Self::generate_seeded(size, size.seed())
+    }
+
+    pub fn generate_seeded(size: MapSize, initial_seed: u32) -> Self {
         let (cells_x_total, cells_y_total) = size.dimensions();
         let cell = 32.0;
         let width = cells_x_total as f32 * cell;
@@ -80,16 +84,15 @@ impl GameMap {
             Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
         ];
 
-        // TankTrouble-style arenas work better when the battlefield has rooms,
-        // sight lines and alternate routes instead of a dense one-cell corridor
-        // maze. We therefore generate a maze on a grid of 2x2-cell rooms. The
-        // resulting openings are wide enough for tanks while walls still create
-        // meaningful ricochet angles and cover.
+        // Use roomy 2x2-cell sectors instead of one-cell corridors. This keeps
+        // the battlefield close to the classic TankTrouble visual language:
+        // roughly two tanks can pass through the main routes while walls still
+        // provide cover and useful ricochet angles.
         let mut visited = vec![false; room_count];
         let mut passages = vec![[false; 4]; room_count];
         let mut stack = vec![(0usize, 0usize)];
         visited[0] = true;
-        let mut seed = size.seed();
+        let mut seed = initial_seed.max(1);
 
         while let Some(&(x, y)) = stack.last() {
             let mut options = [(0usize, 0usize, 0usize, 0usize); 4];
@@ -131,8 +134,8 @@ impl GameMap {
             stack.push((nx, ny));
         }
 
-        // Loops are important: TankTrouble-style maps should encourage chasing,
-        // flanking and bank shots rather than forcing a single route.
+        // Add loops so the player is not forced through one route. The extra
+        // openings make chasing, flanking and bank shots much more interesting.
         let extra_openings = (room_count / 5).max(2);
         for _ in 0..extra_openings {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
@@ -179,9 +182,6 @@ impl GameMap {
             }
         }
 
-        // Spawn from roomy locations around the arena. They are deliberately
-        // distributed instead of using adjacent corners, reducing immediate
-        // spawn kills and giving each player a useful opening route.
         let candidates = [
             (0usize, 0usize),
             (rooms_x - 1, 0),
@@ -214,19 +214,15 @@ impl GameMap {
     }
 
     pub fn is_inside_play_area(&self, point: Vec2, radius: f32) -> bool {
-        point.x - radius >= thickness_margin()
-            && point.y - radius >= thickness_margin()
-            && point.x + radius <= self.width - thickness_margin()
-            && point.y + radius <= self.height - thickness_margin()
+        point.x - radius >= 16.0
+            && point.y - radius >= 16.0
+            && point.x + radius <= self.width - 16.0
+            && point.y + radius <= self.height - 16.0
     }
 
     pub fn spawn_points(&self) -> &[Vec2] {
         &self.spawn_points
     }
-}
-
-const fn thickness_margin() -> f32 {
-    16.0
 }
 
 #[cfg(test)]
@@ -264,5 +260,12 @@ mod tests {
         let second = GameMap::generate(MapSize::Large);
         assert_eq!(first.walls, second.walls);
         assert_eq!(first.spawn_points, second.spawn_points);
+    }
+
+    #[test]
+    fn different_seeds_change_the_arena() {
+        let first = GameMap::generate_seeded(MapSize::Medium, 1);
+        let second = GameMap::generate_seeded(MapSize::Medium, 2);
+        assert_ne!(first.walls, second.walls);
     }
 }
