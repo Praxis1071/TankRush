@@ -1,0 +1,35 @@
+name: Direct polish v3
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install GTK4 development packages
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+      - name: Apply patch
+        run: python3 scripts/polish_v3.py
+      - name: Format and verify
+        run: |
+          cargo fmt --all
+          cargo test --all-targets --all-features
+          cargo build --all-targets --all-features
+          cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A clippy::collapsible_if -A clippy::needless_range_loop -A clippy::option_map_unit_fn
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/polish-v3.yml scripts/polish_v3.py
+          git add src/main.rs src/game/map.rs .github/workflows/polish-v3.yml scripts/polish_v3.py
+          git commit -m "feat: polish tanks arenas and match options"
+          git push
