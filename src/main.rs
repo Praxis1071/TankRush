@@ -1,9 +1,56 @@
+mod game;
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use game::config::AudioSettings;
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Button, Label, Orientation};
+use gtk4::{Application, ApplicationWindow, Box, Button, CheckButton, Label, Orientation};
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
 
+fn build_settings_window(parent: &ApplicationWindow, audio: Rc<RefCell<AudioSettings>>) {
+    let music = CheckButton::with_label("Music");
+    let effects = CheckButton::with_label("Sound effects");
+    music.set_active(audio.borrow().music_enabled);
+    effects.set_active(audio.borrow().sound_effects_enabled);
+
+    {
+        let audio = Rc::clone(&audio);
+        music.connect_toggled(move |button| {
+            audio.borrow_mut().music_enabled = button.is_active();
+        });
+    }
+    {
+        let audio = Rc::clone(&audio);
+        effects.connect_toggled(move |button| {
+            audio.borrow_mut().sound_effects_enabled = button.is_active();
+        });
+    }
+
+    let content = Box::new(Orientation::Vertical, 12);
+    content.set_margin_top(24);
+    content.set_margin_bottom(24);
+    content.set_margin_start(24);
+    content.set_margin_end(24);
+    content.append(&Label::new(Some("Audio")));
+    content.append(&music);
+    content.append(&effects);
+
+    let window = ApplicationWindow::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title("TankRush Settings")
+        .default_width(320)
+        .default_height(220)
+        .child(&content)
+        .build();
+    window.present();
+}
+
 fn build_ui(app: &Application) {
+    let audio_settings = Rc::new(RefCell::new(AudioSettings::default()));
+
     let title = Label::new(Some("TANKRUSH"));
     title.add_css_class("title-1");
 
@@ -37,6 +84,10 @@ fn build_ui(app: &Application) {
         .child(&content)
         .build();
 
+    let parent = window.clone();
+    let audio = Rc::clone(&audio_settings);
+    settings.connect_clicked(move |_| build_settings_window(&parent, Rc::clone(&audio)));
+
     let app_weak = app.downgrade();
     quit.connect_clicked(move |_| {
         if let Some(app) = app_weak.upgrade() {
@@ -44,10 +95,7 @@ fn build_ui(app: &Application) {
         }
     });
 
-    // These controls are intentionally wired in later stages. The initial
-    // scaffold keeps the main menu visible while the game architecture grows.
-    let _ = (single_player, multiplayer, settings);
-
+    let _ = (single_player, multiplayer);
     window.present();
 }
 
