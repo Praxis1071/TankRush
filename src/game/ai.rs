@@ -1,4 +1,6 @@
-use super::{collision, GameConfig, GameMap, GameState, PlayerId, TankInput, Vec2};
+use super::{
+    collision, GameConfig, GameMap, GameState, PlayerId, PowerUp, TankInput, Vec2,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AiController {
@@ -29,6 +31,7 @@ impl AiController {
         state: &GameState,
         map: &GameMap,
         config: &GameConfig,
+        powerups: &[PowerUp],
         self_id: PlayerId,
         dt: f32,
     ) -> TankInput {
@@ -67,18 +70,39 @@ impl AiController {
         let distance = to_target.length();
         let direct_angle = to_target.y.atan2(to_target.x);
         let mut desired_angle = direct_angle;
+        let threat = projectile_threat(state, tank.position, config.tank_radius);
+        let powerup_goal = if threat <= 0.0 {
+            powerups
+                .iter()
+                .map(|powerup| {
+                    let distance = (powerup.position - tank.position).length();
+                    let tactical_value = if powerup.kind == super::PowerUpKind::Laser {
+                        24.0
+                    } else {
+                        0.0
+                    };
+                    (distance - tactical_value, powerup.position)
+                })
+                .filter(|(distance, _)| *distance < 300.0)
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, position)| position)
+        } else {
+            None
+        };
 
-        if let Some(waypoint) = next_waypoint(tank.position, target.position, map, config.tank_radius)
-        {
+        let objective = powerup_goal.unwrap_or(target.position);
+        if let Some(waypoint) = next_waypoint(tank.position, objective, map, config.tank_radius) {
             let to_waypoint = waypoint - tank.position;
             if to_waypoint.length() > 24.0 {
                 desired_angle = to_waypoint.y.atan2(to_waypoint.x);
             }
         }
 
-        let threat = projectile_threat(state, tank.position, config.tank_radius);
         if threat > 0.0 {
             desired_angle = threat_escape_angle(state, tank.position, desired_angle, threat);
+        } else if powerup_goal.is_some() && distance > 160.0 {
+            let delta = objective - tank.position;
+            desired_angle = delta.y.atan2(delta.x);
         } else if distance < 260.0 && line_of_sight(tank.position, target.position, map) {
             desired_angle = direct_angle;
             if distance < 190.0 {
@@ -296,7 +320,7 @@ mod tests {
         sim.state.add_tank(ai, Vec2::new(100.0, 100.0));
         sim.state.add_tank(enemy, Vec2::new(200.0, 100.0));
         let mut controller = AiController::default();
-        let input = controller.input(&sim.state, &sim.map, &sim.config, ai, 1.0 / 60.0);
+        let input = controller.input(&sim.state, &sim.map, &sim.config, &[], ai, 1.0 / 60.0);
         assert!(input.right || input.forward || input.fire);
         assert_eq!(controller.target, Some(enemy));
     }
