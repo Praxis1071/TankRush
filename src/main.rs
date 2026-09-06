@@ -1,4 +1,5 @@
 mod game;
+mod network;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -218,11 +219,17 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
 
     context.restore().ok();
     context.set_source_rgb(0.9, 0.92, 0.95);
-    context.select_font_face("Sans", gtk4::cairo::FontSlant::Normal, gtk4::cairo::FontWeight::Bold);
+    context.select_font_face(
+        "Sans",
+        gtk4::cairo::FontSlant::Normal,
+        gtk4::cairo::FontWeight::Bold,
+    );
     context.set_font_size(16.0);
     context.move_to(16.0, 26.0);
     let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
-    context.show_text(&format!("TANKRUSH  •  Survivors: {alive}")).ok();
+    context
+        .show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
+        .ok();
 }
 
 fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: MapSize) {
@@ -303,8 +310,13 @@ fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: 
             .take(player_count)
             .map(|(index, input)| (PlayerId(index as u8), input))
             .collect();
-        let events = simulation_for_timer.borrow_mut().advance(1.0 / 60.0, &pairs);
-        if events.iter().any(|event| matches!(event.kind, game::SimulationEventKind::TankDestroyed)) {
+        let events = simulation_for_timer
+            .borrow_mut()
+            .advance(1.0 / 60.0, &pairs);
+        if events
+            .iter()
+            .any(|event| matches!(event.kind, game::SimulationEventKind::TankDestroyed))
+        {
             drawing_for_timer.queue_draw();
         } else {
             drawing_for_timer.queue_draw();
@@ -366,9 +378,10 @@ fn build_ui(app: &Application) {
             .title("LAN Multiplayer")
             .default_width(420)
             .default_height(220)
-            .child(&Label::new(Some(
-                "LAN host/join lobby is scheduled for Stage 8–10.\nThe single-player engine is already playable.",
-            )))
+            .child(&Label::new(Some(&format!(
+                "LAN protocol v{} is ready.\nLobby and network gameplay are next in Stage 9–10.",
+                network::PROTOCOL_VERSION
+            ))))
             .build();
         dialog.present();
     });
