@@ -1,4 +1,4 @@
-use super::{Vec2, map::Wall};
+use super::{map::Wall, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CollisionHit {
@@ -86,8 +86,7 @@ mod tests {
     #[test]
     fn segment_hit_finds_wall_face() {
         let wall = Wall::new(Vec2::new(10.0, 10.0), Vec2::new(20.0, 20.0));
-        let hit =
-            segment_wall_hit(Vec2::new(0.0, 15.0), Vec2::new(15.0, 15.0), wall).unwrap();
+        let hit = segment_wall_hit(Vec2::new(0.0, 15.0), Vec2::new(15.0, 15.0), wall).unwrap();
         assert!((hit.point.x - 10.0).abs() < 0.001);
         assert_eq!(hit.normal, Vec2::new(-1.0, 0.0));
     }
