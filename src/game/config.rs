@@ -1,18 +1,26 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GameConfig {
     pub tank_speed: f32,
+    pub tank_turn_speed_radians: f32,
+    pub tank_radius: f32,
     pub projectile_speed: f32,
     pub projectile_lifetime_seconds: f32,
+    pub projectile_radius: f32,
     pub max_active_projectiles_per_tank: usize,
+    pub fixed_timestep_seconds: f32,
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
             tank_speed: 120.0,
+            tank_turn_speed_radians: 3.2,
+            tank_radius: 14.0,
             projectile_speed: 180.0,
             projectile_lifetime_seconds: 5.0,
+            projectile_radius: 3.0,
             max_active_projectiles_per_tank: 8,
+            fixed_timestep_seconds: 1.0 / 60.0,
         }
     }
 }
@@ -25,10 +33,7 @@ pub struct AudioSettings {
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self {
-            music_enabled: true,
-            sound_effects_enabled: true,
-        }
+        Self { music_enabled: true, sound_effects_enabled: true }
     }
 }
 
@@ -40,6 +45,7 @@ mod tests {
     fn default_projectile_is_faster_than_tank() {
         let config = GameConfig::default();
         assert!(config.projectile_speed > config.tank_speed);
+        assert!(config.projectile_speed < config.tank_speed * 1.6 + 0.001);
     }
 
     #[test]
@@ -47,5 +53,10 @@ mod tests {
         let config = GameConfig::default();
         assert_eq!(config.projectile_lifetime_seconds, 5.0);
         assert_eq!(config.max_active_projectiles_per_tank, 8);
+    }
+
+    #[test]
+    fn fixed_timestep_is_sixty_hz() {
+        assert!((GameConfig::default().fixed_timestep_seconds - 1.0 / 60.0).abs() < f32::EPSILON);
     }
 }
