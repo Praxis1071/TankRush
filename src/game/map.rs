@@ -70,7 +70,7 @@ impl GameMap {
         let cell = 32.0;
         let width = cells_x_total as f32 * cell;
         let height = cells_y_total as f32 * cell;
-        let thickness = 12.0;
+        let thickness = 14.0;
         let cells_x = (cells_x_total - 2) as usize;
         let cells_y = (cells_y_total - 2) as usize;
         let rooms_x = cells_x / 2;
@@ -84,10 +84,9 @@ impl GameMap {
             Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
         ];
 
-        // Use roomy 2x2-cell sectors instead of one-cell corridors. This keeps
-        // the battlefield close to the classic TankTrouble visual language:
-        // roughly two tanks can pass through the main routes while walls still
-        // provide cover and useful ricochet angles.
+        // Build a connected room graph first, then open most of its remaining
+        // edges. This intentionally avoids the dense one-cell maze look: the
+        // player gets broad routes, cover and bank-shot angles instead.
         let mut visited = vec![false; room_count];
         let mut passages = vec![[false; 4]; room_count];
         let mut stack = vec![(0usize, 0usize)];
@@ -103,7 +102,6 @@ impl GameMap {
                 (0, 1, 2, 0),
                 (-1, 0, 3, 1),
             ];
-
             for &(dx, dy, direction, opposite) in &candidates {
                 let nx = x as isize + dx;
                 let ny = y as isize + dy;
@@ -117,12 +115,10 @@ impl GameMap {
                     option_count += 1;
                 }
             }
-
             if option_count == 0 {
                 stack.pop();
                 continue;
             }
-
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let choice = (seed as usize) % option_count;
             let (nx, ny, direction, opposite) = options[choice];
@@ -134,14 +130,15 @@ impl GameMap {
             stack.push((nx, ny));
         }
 
-        // Add loops so the player is not forced through one route. The extra
-        // openings make chasing, flanking and bank shots much more interesting.
-        let extra_openings = (room_count / 5).max(2);
+        // Open about 75% of the still-closed adjacencies. The spanning tree
+        // guarantees connectivity; the extra openings make the arena sparse.
+        let extra_openings = (room_count * 3 / 4).max(1);
         for _ in 0..extra_openings {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let x = (seed as usize) % rooms_x;
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let y = (seed as usize) % rooms_y;
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let direction = (seed as usize) % 4;
             let (dx, dy, opposite) = match direction {
                 0 => (0isize, -1isize, 2usize),
@@ -164,7 +161,6 @@ impl GameMap {
                 let index = y * rooms_x + x;
                 let left = 16.0 + x as f32 * cell * 2.0;
                 let top = 16.0 + y as f32 * cell * 2.0;
-
                 if x + 1 < rooms_x && !passages[index][1] {
                     let wall_x = left + cell * 2.0;
                     walls.push(Wall::new(
@@ -182,7 +178,7 @@ impl GameMap {
             }
         }
 
-        let candidates = [
+        let mut candidates = vec![
             (0usize, 0usize),
             (rooms_x - 1, 0),
             (0, rooms_y - 1),
@@ -194,6 +190,12 @@ impl GameMap {
             (rooms_x / 3, rooms_y / 3),
             ((rooms_x * 2) / 3, (rooms_y * 2) / 3),
         ];
+        // Shuffle spawn order so every seeded arena has a different opening.
+        for index in (1..candidates.len()).rev() {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let swap = (seed as usize) % (index + 1);
+            candidates.swap(index, swap);
+        }
         let spawn_points = candidates
             .into_iter()
             .map(|(x, y)| {
@@ -237,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_map_has_internal_walls_without_being_dense() {
+    fn generated_map_is_sparse_enough_for_open_combat() {
         let map = GameMap::generate(MapSize::Medium);
         assert!(map.walls.len() > 4);
         assert!(map.walls.len() < 60);
@@ -247,11 +249,10 @@ mod tests {
     fn generated_map_has_ten_safe_spawns() {
         let map = GameMap::generate(MapSize::Medium);
         assert_eq!(map.spawn_points().len(), 10);
-        assert!(
-            map.spawn_points()
-                .iter()
-                .all(|&p| map.is_inside_play_area(p, 14.0))
-        );
+        assert!(map.spawn_points().iter().all(|&p| {
+            map.is_inside_play_area(p, 14.0)
+                && !map.walls.iter().any(|wall| wall.contains(p))
+        }));
     }
 
     #[test]
@@ -267,5 +268,6 @@ mod tests {
         let first = GameMap::generate_seeded(MapSize::Medium, 1);
         let second = GameMap::generate_seeded(MapSize::Medium, 2);
         assert_ne!(first.walls, second.walls);
+        assert_ne!(first.spawn_points, second.spawn_points);
     }
 }
