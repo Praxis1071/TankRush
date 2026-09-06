@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot source migration: idempotence is intentionally guarded by exact source patterns.
 path = Path("src/main.rs")
 text = path.read_text()
 
@@ -12,12 +13,6 @@ replacements = [
     (1.0, 0.82, 0.18),
 ];''',
         '''const PLAYER_COLORS: [(f64, f64, f64); 4] = [(0.98, 0.78, 0.08); 4];''',
-    ),
-    (
-        '''        match kind {
-            PowerUpKind::DoubleShot => {''',
-        '''        match kind {
-            PowerUpKind::DoubleShot => {''',
     ),
     (
         '''            PowerUpKind::Shrapnel => {
