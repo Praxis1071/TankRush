@@ -13,8 +13,8 @@ use glib::{ControlFlow, Propagation};
 use gtk4::cairo::Context;
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText,
-    DrawingArea, EventControllerKey, Label, Orientation, SpinButton,
+    Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText, DrawingArea,
+    Entry, EventControllerKey, Label, Orientation, SpinButton,
 };
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
@@ -24,6 +24,90 @@ const PLAYER_COLORS: [(f64, f64, f64); 4] = [
     (0.35, 1.0, 0.45),
     (1.0, 0.80, 0.25),
 ];
+
+#[derive(Debug, Clone)]
+struct ControlBindings {
+    keys: [String; 5],
+}
+
+impl ControlBindings {
+    fn new(keys: [&str; 5]) -> Self {
+        Self {
+            keys: keys.map(str::to_string),
+        }
+    }
+}
+
+fn default_controls() -> Vec<ControlBindings> {
+    vec![
+        ControlBindings::new(["w", "s", "a", "d", "space"]),
+        ControlBindings::new(["Up", "Down", "Left", "Right", "Return"]),
+        ControlBindings::new(["i", "k", "j", "l", "o"]),
+        ControlBindings::new(["8", "5", "4", "6", "0"]),
+    ]
+}
+
+fn key_label(key: &str) -> String {
+    match key {
+        "space" => "Space".to_string(),
+        "Return" => "Enter".to_string(),
+        "Up" => "↑".to_string(),
+        "Down" => "↓".to_string(),
+        "Left" => "←".to_string(),
+        "Right" => "→".to_string(),
+        _ => key.to_uppercase(),
+    }
+}
+
+fn bind_control_button(
+    parent: &ApplicationWindow,
+    button: &Button,
+    bindings: &Rc<RefCell<Vec<ControlBindings>>>,
+    player: usize,
+    action: usize,
+) {
+    let parent = parent.clone();
+    let bindings = Rc::clone(bindings);
+    let button_for_dialog = button.clone();
+    button.connect_clicked(move |_| {
+        let dialog = ApplicationWindow::builder()
+            .transient_for(&parent)
+            .modal(true)
+            .title("Change Control")
+            .default_width(340)
+            .default_height(150)
+            .build();
+        let content = Box::new(Orientation::Vertical, 10);
+        content.set_margin_top(24);
+        content.set_margin_bottom(24);
+        content.set_margin_start(24);
+        content.set_margin_end(24);
+        content.append(&Label::new(Some("Press the key you want to assign.")));
+        content.append(&Label::new(Some("Escape cancels the assignment.")));
+        dialog.set_child(Some(&content));
+
+        let controller = EventControllerKey::new();
+        let dialog_for_key = dialog.clone();
+        let bindings_for_key = Rc::clone(&bindings);
+        let button_for_key = button_for_dialog.clone();
+        controller.connect_key_pressed(move |_, key, _, _| {
+            let Some(name) = key.name() else {
+                return Propagation::Stop;
+            };
+            let name = name.to_string();
+            if name == "Escape" {
+                dialog_for_key.close();
+                return Propagation::Stop;
+            }
+            bindings_for_key.borrow_mut()[player].keys[action] = name.clone();
+            button_for_key.set_label(&key_label(&name));
+            dialog_for_key.close();
+            Propagation::Stop
+        });
+        dialog.add_controller(controller);
+        dialog.present();
+    });
+}
 
 fn build_settings_window(
     parent: &ApplicationWindow,
@@ -71,22 +155,48 @@ fn build_single_player_window(parent: &ApplicationWindow) {
     let players_adjustment = Adjustment::new(1.0, 1.0, 4.0, 1.0, 1.0, 0.0);
     let players = SpinButton::new(Some(&players_adjustment), 1.0, 0);
     let maps = ComboBoxText::new();
-    maps.append_text("Small");
-    maps.append_text("Medium");
-    maps.append_text("Large");
-    maps.append_text("Very Large");
+    maps.append_text("Small Maze");
+    maps.append_text("Medium Maze");
+    maps.append_text("Large Maze");
+    maps.append_text("Very Large Maze");
     maps.set_active(Some(0));
 
-    let content = Box::new(Orientation::Vertical, 12);
-    content.set_margin_top(28);
-    content.set_margin_bottom(28);
-    content.set_margin_start(28);
-    content.set_margin_end(28);
-    content.append(&Label::new(Some("Single Player")));
+    let bindings = Rc::new(RefCell::new(default_controls()));
+    let mut name_entries = Vec::new();
+    let mut control_rows = Vec::new();
+    for player in 0..4 {
+        let row = Box::new(Orientation::Horizontal, 6);
+        let name = Entry::new();
+        name.set_text(&format!("Player {}", player + 1));
+        name.set_width_chars(12);
+        row.append(&Label::new(Some(&format!("P{}", player + 1))));
+        row.append(&name);
+        let labels = ["↑", "↓", "←", "→", "FIRE"];
+        for action in 0..5 {
+            let button = Button::with_label(&key_label(&bindings.borrow()[player].keys[action]));
+            button.set_tooltip_text(Some(labels[action]));
+            bind_control_button(parent, &button, &bindings, player, action);
+            row.append(&button);
+        }
+        name_entries.push(name);
+        control_rows.push(row);
+    }
+
+    let content = Box::new(Orientation::Vertical, 10);
+    content.set_margin_top(22);
+    content.set_margin_bottom(22);
+    content.set_margin_start(22);
+    content.set_margin_end(22);
+    content.append(&Label::new(Some("Single Player / Local Battle")));
+    content.append(&Label::new(Some("Choose the number of tanks, names and controls.")));
     content.append(&Label::new(Some("Players (1–4)")));
     content.append(&players);
-    content.append(&Label::new(Some("Map size")));
+    content.append(&Label::new(Some("Map")));
     content.append(&maps);
+    content.append(&Label::new(Some("Player setup")));
+    for row in control_rows {
+        content.append(&row);
+    }
 
     let start = Button::with_label("Start Match");
     let cancel = Button::with_label("Back");
@@ -99,8 +209,8 @@ fn build_single_player_window(parent: &ApplicationWindow) {
         .transient_for(parent)
         .modal(true)
         .title("TankRush — Match Setup")
-        .default_width(420)
-        .default_height(360)
+        .default_width(780)
+        .default_height(520)
         .child(&content)
         .build();
 
@@ -109,13 +219,33 @@ fn build_single_player_window(parent: &ApplicationWindow) {
     start.connect_clicked(move |_| {
         let player_count = players.value_as_int().clamp(1, 4) as usize;
         let map_size = match maps.active_text().as_deref() {
-            Some("Medium") => MapSize::Medium,
-            Some("Large") => MapSize::Large,
-            Some("Very Large") => MapSize::VeryLarge,
+            Some("Medium Maze") => MapSize::Medium,
+            Some("Large Maze") => MapSize::Large,
+            Some("Very Large Maze") => MapSize::VeryLarge,
             _ => MapSize::Small,
         };
+        let names = name_entries
+            .iter()
+            .take(player_count)
+            .enumerate()
+            .map(|(index, entry)| {
+                let name = entry.text().trim().to_string();
+                if name.is_empty() {
+                    format!("Player {}", index + 1)
+                } else {
+                    name.chars().take(18).collect()
+                }
+            })
+            .collect::<Vec<_>>();
+        let selected_bindings = bindings.borrow().clone();
         window_for_start.close();
-        build_game_window(&parent_for_start, player_count, map_size);
+        build_game_window(
+            &parent_for_start,
+            player_count,
+            map_size,
+            names,
+            selected_bindings,
+        );
     });
 
     let window_for_cancel = window.clone();
@@ -123,37 +253,32 @@ fn build_single_player_window(parent: &ApplicationWindow) {
     window.present();
 }
 
-fn player_input(player: usize, name: &str, pressed: bool, input: &mut [TankInput; 4]) -> bool {
-    let (index, action) = match (player, name) {
-        (0, "w") => (0, 0),
-        (0, "s") => (0, 1),
-        (0, "a") => (0, 2),
-        (0, "d") => (0, 3),
-        (0, "space") => (0, 4),
-        (1, "Up") => (1, 0),
-        (1, "Down") => (1, 1),
-        (1, "Left") => (1, 2),
-        (1, "Right") => (1, 3),
-        (1, "Return") => (1, 4),
-        (2, "i") => (2, 0),
-        (2, "k") => (2, 1),
-        (2, "j") => (2, 2),
-        (2, "l") => (2, 3),
-        (2, "o") => (2, 4),
-        (3, "8") => (3, 0),
-        (3, "5") => (3, 1),
-        (3, "4") => (3, 2),
-        (3, "6") => (3, 3),
-        (3, "0") => (3, 4),
-        _ => return false,
+fn apply_key(
+    player: usize,
+    name: &str,
+    pressed: bool,
+    bindings: &[ControlBindings],
+    input: &mut [TankInput; 4],
+    fire_pending: &mut [bool; 4],
+    fire_down: &mut [bool; 4],
+) -> bool {
+    if player >= bindings.len() {
+        return false;
+    }
+    let Some(action) = bindings[player].keys.iter().position(|key| key == name) else {
+        return false;
     };
-
     match action {
-        0 => input[index].forward = pressed,
-        1 => input[index].backward = pressed,
-        2 => input[index].left = pressed,
-        3 => input[index].right = pressed,
-        4 => input[index].fire = pressed,
+        0 => input[player].forward = pressed,
+        1 => input[player].backward = pressed,
+        2 => input[player].left = pressed,
+        3 => input[player].right = pressed,
+        4 => {
+            if pressed && !fire_down[player] {
+                fire_pending[player] = true;
+            }
+            fire_down[player] = pressed;
+        }
         _ => unreachable!(),
     }
     true
@@ -172,16 +297,11 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     context.translate(offset_x, offset_y);
     context.scale(scale, scale);
 
-    context.set_source_rgb(0.07, 0.10, 0.12);
-    context.rectangle(
-        0.0,
-        0.0,
-        simulation.map.width as f64,
-        simulation.map.height as f64,
-    );
+    context.set_source_rgb(0.055, 0.075, 0.085);
+    context.rectangle(0.0, 0.0, simulation.map.width as f64, simulation.map.height as f64);
     context.fill().ok();
 
-    context.set_source_rgb(0.18, 0.22, 0.25);
+    context.set_source_rgb(0.16, 0.20, 0.23);
     for wall in &simulation.map.walls {
         context.rectangle(
             wall.min.x as f64,
@@ -237,31 +357,34 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     );
     context.set_font_size(16.0);
     context.move_to(16.0, 26.0);
-    let alive = simulation
-        .state
-        .tanks
-        .iter()
-        .filter(|tank| tank.alive)
-        .count();
+    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
     context
         .show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
         .ok();
 }
 
-fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: MapSize) {
+fn build_game_window(
+    parent: &ApplicationWindow,
+    player_count: usize,
+    map_size: MapSize,
+    names: Vec<String>,
+    bindings: Vec<ControlBindings>,
+) {
     let config = GameConfig::default();
     let mut simulation = GameSimulation::new(GameMap::generate(map_size), config);
     let spawn_points = simulation.map.spawn_points().to_vec();
     for index in 0..player_count {
         let player_id = simulation
             .state
-            .add_player(format!("P{}", index + 1), None)
+            .add_player(names[index].clone(), None)
             .expect("player count is capped at four");
         simulation.state.add_tank(player_id, spawn_points[index]);
     }
 
     let simulation = Rc::new(RefCell::new(simulation));
     let inputs = Rc::new(RefCell::new([TankInput::idle(); 4]));
+    let fire_pending = Rc::new(RefCell::new([false; 4]));
+    let fire_down = Rc::new(RefCell::new([false; 4]));
     let drawing_area = DrawingArea::new();
     drawing_area.set_content_width(960);
     drawing_area.set_content_height(640);
@@ -277,14 +400,20 @@ fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: 
     let key_controller = EventControllerKey::new();
     {
         let inputs = Rc::clone(&inputs);
+        let fire_pending = Rc::clone(&fire_pending);
+        let fire_down = Rc::clone(&fire_down);
+        let bindings = bindings.clone();
         key_controller.connect_key_pressed(move |_, key, _, _| {
-            if let Some(name) = key.name() {
-                let name = name.to_string();
-                let mut input = inputs.borrow_mut();
-                for player in 0..4 {
-                    if player_input(player, &name, true, &mut input) {
-                        return Propagation::Stop;
-                    }
+            let Some(name) = key.name() else {
+                return Propagation::Proceed;
+            };
+            let name = name.to_string();
+            let mut input = inputs.borrow_mut();
+            let mut pending = fire_pending.borrow_mut();
+            let mut down = fire_down.borrow_mut();
+            for player in 0..player_count {
+                if apply_key(player, &name, true, &bindings, &mut input, &mut pending, &mut down) {
+                    return Propagation::Stop;
                 }
             }
             Propagation::Proceed
@@ -292,15 +421,18 @@ fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: 
     }
     {
         let inputs = Rc::clone(&inputs);
+        let fire_down = Rc::clone(&fire_down);
+        let bindings = bindings.clone();
         key_controller.connect_key_released(move |_, key, _, _| {
-            if let Some(name) = key.name() {
-                let name = name.to_string();
-                let mut input = inputs.borrow_mut();
-                for player in 0..4 {
-                    if player_input(player, &name, false, &mut input) {
-                        return;
-                    }
-                }
+            let Some(name) = key.name() else {
+                return;
+            };
+            let name = name.to_string();
+            let mut input = inputs.borrow_mut();
+            let mut pending = [false; 4];
+            let mut down = fire_down.borrow_mut();
+            for player in 0..player_count {
+                apply_key(player, &name, false, &bindings, &mut input, &mut pending, &mut down);
             }
         });
     }
@@ -317,9 +449,17 @@ fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: 
 
     let simulation_for_timer = Rc::clone(&simulation);
     let inputs_for_timer = Rc::clone(&inputs);
+    let pending_for_timer = Rc::clone(&fire_pending);
     let drawing_for_timer = drawing_area.clone();
     glib::source::timeout_add_local(Duration::from_millis(16), move || {
-        let input_snapshot = inputs_for_timer.borrow().to_vec();
+        let mut input_snapshot = inputs_for_timer.borrow().to_vec();
+        let mut pending = pending_for_timer.borrow_mut();
+        for index in 0..player_count {
+            if pending[index] {
+                input_snapshot[index].fire = true;
+                pending[index] = false;
+            }
+        }
         let pairs: Vec<(PlayerId, TankInput)> = input_snapshot
             .into_iter()
             .enumerate()
@@ -330,9 +470,6 @@ fn build_game_window(parent: &ApplicationWindow, player_count: usize, map_size: 
             .borrow_mut()
             .advance(1.0 / 60.0, &pairs);
         drawing_for_timer.queue_draw();
-        for input in inputs_for_timer.borrow_mut().iter_mut() {
-            input.fire = false;
-        }
         ControlFlow::Continue
     });
 
