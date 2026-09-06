@@ -49,11 +49,16 @@ pub struct GameMap {
 
 impl GameMap {
     pub fn rectangular(size: MapSize) -> Self {
+        Self::generate(size)
+    }
+
+    pub fn generate(size: MapSize) -> Self {
         let (cells_x, cells_y) = size.dimensions();
-        let width = cells_x as f32 * 32.0;
-        let height = cells_y as f32 * 32.0;
+        let cell = 32.0;
+        let width = cells_x as f32 * cell;
+        let height = cells_y as f32 * cell;
         let thickness = 16.0;
-        let walls = vec![
+        let mut walls = vec![
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
             Wall::new(
                 Vec2::new(0.0, height - thickness),
@@ -65,6 +70,52 @@ impl GameMap {
                 Vec2::new(width, height),
             ),
         ];
+
+        let barrier_gap = 3u32;
+        let mut x = 6u32;
+        let mut column_index = 0u32;
+        while x + 2 < cells_x {
+            let gap = ((column_index * 3 + cells_y / 2) % (cells_y - 2)).max(1);
+            let gap_start = gap.saturating_sub(barrier_gap / 2);
+            if gap_start > 1 {
+                walls.push(Wall::new(
+                    Vec2::new(x as f32 * cell, 16.0),
+                    Vec2::new(x as f32 * cell + thickness, gap_start as f32 * cell),
+                ));
+            }
+            let after_gap = gap_start + barrier_gap;
+            if after_gap + 1 < cells_y {
+                walls.push(Wall::new(
+                    Vec2::new(x as f32 * cell, after_gap as f32 * cell),
+                    Vec2::new(x as f32 * cell + thickness, height - 16.0),
+                ));
+            }
+            x += 6;
+            column_index += 1;
+        }
+
+        let mut y = 5u32;
+        let mut row_index = 0u32;
+        while y + 2 < cells_y {
+            let gap = ((row_index * 5 + cells_x / 3) % (cells_x - 2)).max(1);
+            let gap_start = gap.saturating_sub(barrier_gap / 2);
+            if gap_start > 1 {
+                walls.push(Wall::new(
+                    Vec2::new(16.0, y as f32 * cell),
+                    Vec2::new(gap_start as f32 * cell, y as f32 * cell + thickness),
+                ));
+            }
+            let after_gap = gap_start + barrier_gap;
+            if after_gap + 1 < cells_x {
+                walls.push(Wall::new(
+                    Vec2::new(after_gap as f32 * cell, y as f32 * cell),
+                    Vec2::new(width - 16.0, y as f32 * cell + thickness),
+                ));
+            }
+            y += 6;
+            row_index += 1;
+        }
+
         let spawn_points = vec![
             Vec2::new(width * 0.2, height * 0.2),
             Vec2::new(width * 0.8, height * 0.2),
@@ -104,8 +155,14 @@ mod tests {
     }
 
     #[test]
-    fn rectangular_map_has_safe_spawns() {
-        let map = GameMap::rectangular(MapSize::Medium);
+    fn generated_map_has_internal_walls() {
+        let map = GameMap::generate(MapSize::Medium);
+        assert!(map.walls.len() > 4);
+    }
+
+    #[test]
+    fn generated_map_has_safe_spawns() {
+        let map = GameMap::generate(MapSize::Medium);
         assert!(map
             .spawn_points()
             .iter()
