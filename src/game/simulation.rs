@@ -172,9 +172,14 @@ impl GameSimulation {
     }
 
     fn can_place_tank(&self, position: Vec2) -> bool {
-        self.map.is_inside_play_area(position, self.config.tank_radius)
+        self.map
+            .is_inside_play_area(position, self.config.tank_radius)
             && !self.map.walls.iter().any(|wall| {
-                super::collision::circle_intersects_wall(position, self.config.tank_radius, *wall)
+                super::collision::circle_intersects_wall(
+                    position,
+                    self.config.tank_radius,
+                    *wall,
+                )
             })
     }
 
