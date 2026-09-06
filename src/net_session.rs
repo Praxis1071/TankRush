@@ -68,7 +68,11 @@ impl AuthoritativeServer {
             return Ok(events);
         }
 
-        let inputs: Vec<_> = self.inputs.iter().map(|(&id, &input)| (id, input)).collect();
+        let inputs: Vec<_> = self
+            .inputs
+            .iter()
+            .map(|(&id, &input)| (id, input))
+            .collect();
         let simulation_events = self.simulation.step(&inputs);
         self.tick = self.tick.wrapping_add(1);
         if self.tick.is_multiple_of(SNAPSHOT_INTERVAL_TICKS) {
@@ -91,8 +95,12 @@ impl AuthoritativeServer {
             Packet::JoinRequest { player_name } => {
                 if let Some(existing_id) = self.transport.player_for_addr(addr) {
                     self.last_seen.insert(existing_id, now);
-                    self.transport
-                        .send_to(&Packet::JoinAccepted { player_id: existing_id }, addr)?;
+                    self.transport.send_to(
+                        &Packet::JoinAccepted {
+                            player_id: existing_id,
+                        },
+                        addr,
+                    )?;
                     return Ok(events);
                 }
                 if self.match_started || self.lobby.players.len() >= MAX_LOBBY_PLAYERS {
@@ -127,24 +135,30 @@ impl AuthoritativeServer {
                 events.push(ServerEvent::PlayerJoined(player_id));
             }
             Packet::Ready { player_id, ready } => {
-                if self.transport.player_for_addr(addr) == Some(player_id) && self.lobby.set_ready(player_id, ready) {
+                if self.transport.player_for_addr(addr) == Some(player_id)
+                    && self.lobby.set_ready(player_id, ready)
+                {
                     self.last_seen.insert(player_id, now);
                 }
             }
             Packet::Input { player_id, input } => {
                 if self.match_started
                     && self.transport.player_for_addr(addr) == Some(player_id)
-                    && self.lobby.players.iter().any(|player| player.id == player_id)
+                    && self
+                        .lobby
+                        .players
+                        .iter()
+                        .any(|player| player.id == player_id)
                 {
                     self.inputs.insert(player_id, input);
                     self.last_seen.insert(player_id, now);
                 }
             }
             Packet::Disconnect { player_id } => {
-                if self.transport.player_for_addr(addr) == Some(player_id) {
-                    if self.remove_player(player_id)? {
-                        events.push(ServerEvent::PlayerLeft(player_id));
-                    }
+                if self.transport.player_for_addr(addr) == Some(player_id)
+                    && self.remove_player(player_id)?
+                {
+                    events.push(ServerEvent::PlayerLeft(player_id));
                 }
             }
             Packet::Hello { .. } | Packet::JoinAccepted { .. } | Packet::Snapshot { .. } => {}
@@ -256,7 +270,10 @@ mod tests {
             .unwrap();
         server.poll(Instant::now()).unwrap();
         assert_eq!(server.lobby.players.len(), 1);
-        assert_eq!(server.transport.player_for_addr(client_addr), Some(PlayerId(0)));
+        assert_eq!(
+            server.transport.player_for_addr(client_addr),
+            Some(PlayerId(0))
+        );
 
         client
             .send(&Packet::Ready {
@@ -288,7 +305,9 @@ mod tests {
         let now = Instant::now();
         server.poll(now).unwrap();
         assert_eq!(server.lobby.players.len(), 1);
-        server.poll(now + PEER_TIMEOUT + Duration::from_millis(1)).unwrap();
+        server
+            .poll(now + PEER_TIMEOUT + Duration::from_millis(1))
+            .unwrap();
         assert!(server.lobby.players.is_empty());
     }
 }
