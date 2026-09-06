@@ -62,7 +62,11 @@ impl LobbyState {
     }
 
     pub fn set_ready(&mut self, player_id: PlayerId, ready: bool) -> bool {
-        if let Some(player) = self.players.iter_mut().find(|player| player.id == player_id) {
+        if let Some(player) = self
+            .players
+            .iter_mut()
+            .find(|player| player.id == player_id)
+        {
             player.ready = ready;
             true
         } else {
