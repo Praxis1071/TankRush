@@ -139,18 +139,18 @@ impl MatchRuntime {
         if self.human_count == 1 {
             let id = self.simulation.state.add_player("Laika", None).unwrap();
             self.simulation.state.add_tank(id, spawns[1]);
+            self.weapons[id.0 as usize] = Some(PowerUpKind::Laser);
+            self.weapon_uses[id.0 as usize] = u8::MAX;
             self.ai_id = Some(id);
             self.ai = Some(AiController::default());
         }
         self.powerups.clear();
-        self.powerups.push(PowerUp::generate(
-            &self.simulation.map,
-            &mut self.powerup_seed,
-        ));
-        self.powerups.push(PowerUp::generate(
-            &self.simulation.map,
-            &mut self.powerup_seed,
-        ));
+        while self.powerups.len() < 5 {
+            self.powerups.push(PowerUp::generate(
+                &self.simulation.map,
+                &mut self.powerup_seed,
+            ));
+        }
     }
 
     fn player_name(&self, id: PlayerId) -> String {
@@ -305,7 +305,7 @@ impl MatchRuntime {
         for index in collected.into_iter().rev() {
             self.powerups.remove(index);
         }
-        while self.powerups.len() < 2 {
+        while self.powerups.len() < 5 {
             self.powerups.push(PowerUp::generate(
                 &self.simulation.map,
                 &mut self.powerup_seed,
@@ -466,7 +466,11 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         if !tank.alive {
             continue;
         }
-        let color = PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()];
+        let color = if runtime.ai_id == Some(tank.player_id) {
+            (0.36, 0.37, 0.39)
+        } else {
+            PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()]
+        };
         context.set_source_rgb(color.0, color.1, color.2);
         context.save().ok();
         context.translate(tank.position.x as f64, tank.position.y as f64);
