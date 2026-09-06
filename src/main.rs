@@ -4,7 +4,7 @@ mod lobby;
 mod net_session;
 mod network;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ use gtk4::cairo::Context;
 use gtk4::prelude::*;
 use gtk4::{
     Adjustment, Application, ApplicationWindow, Box, Button, CheckButton, ComboBoxText, DrawingArea,
-    Entry, EventControllerKey, Label, Orientation, SpinButton,
+    Entry, EventControllerKey, Label, Orientation, SpinButton, Stack,
 };
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
@@ -40,8 +40,8 @@ impl ControlBindings {
 
 fn default_controls() -> Vec<ControlBindings> {
     vec![
-        ControlBindings::new(["w", "s", "a", "d", "space"]),
-        ControlBindings::new(["Up", "Down", "Left", "Right", "Return"]),
+        ControlBindings::new(["w", "s", "a", "d", "q"]),
+        ControlBindings::new(["Up", "Down", "Left", "Right", "m"]),
         ControlBindings::new(["i", "k", "j", "l", "o"]),
         ControlBindings::new(["8", "5", "4", "6", "0"]),
     ]
@@ -59,231 +59,6 @@ fn key_label(key: &str) -> String {
     }
 }
 
-fn bind_control_button(
-    parent: &ApplicationWindow,
-    button: &Button,
-    bindings: &Rc<RefCell<Vec<ControlBindings>>>,
-    player: usize,
-    action: usize,
-) {
-    let parent = parent.clone();
-    let bindings = Rc::clone(bindings);
-    let button_for_dialog = button.clone();
-    button.connect_clicked(move |_| {
-        let dialog = ApplicationWindow::builder()
-            .transient_for(&parent)
-            .modal(true)
-            .title("Change Control")
-            .default_width(340)
-            .default_height(150)
-            .build();
-        let content = Box::new(Orientation::Vertical, 10);
-        content.set_margin_top(24);
-        content.set_margin_bottom(24);
-        content.set_margin_start(24);
-        content.set_margin_end(24);
-        content.append(&Label::new(Some("Press the key you want to assign.")));
-        content.append(&Label::new(Some("Escape cancels the assignment.")));
-        dialog.set_child(Some(&content));
-
-        let controller = EventControllerKey::new();
-        let dialog_for_key = dialog.clone();
-        let bindings_for_key = Rc::clone(&bindings);
-        let button_for_key = button_for_dialog.clone();
-        controller.connect_key_pressed(move |_, key, _, _| {
-            let Some(name) = key.name() else {
-                return Propagation::Stop;
-            };
-            let name = name.to_string();
-            if name == "Escape" {
-                dialog_for_key.close();
-                return Propagation::Stop;
-            }
-            bindings_for_key.borrow_mut()[player].keys[action] = name.clone();
-            button_for_key.set_label(&key_label(&name));
-            dialog_for_key.close();
-            Propagation::Stop
-        });
-        dialog.add_controller(controller);
-        dialog.present();
-    });
-}
-
-fn build_settings_window(
-    parent: &ApplicationWindow,
-    audio: Rc<RefCell<game::config::AudioSettings>>,
-) {
-    let music = CheckButton::with_label("Music");
-    let effects = CheckButton::with_label("Sound effects");
-    music.set_active(audio.borrow().music_enabled);
-    effects.set_active(audio.borrow().sound_effects_enabled);
-
-    {
-        let audio = Rc::clone(&audio);
-        music.connect_toggled(move |button| {
-            audio.borrow_mut().music_enabled = button.is_active();
-        });
-    }
-    {
-        let audio = Rc::clone(&audio);
-        effects.connect_toggled(move |button| {
-            audio.borrow_mut().sound_effects_enabled = button.is_active();
-        });
-    }
-
-    let content = Box::new(Orientation::Vertical, 12);
-    content.set_margin_top(24);
-    content.set_margin_bottom(24);
-    content.set_margin_start(24);
-    content.set_margin_end(24);
-    content.append(&Label::new(Some("Audio")));
-    content.append(&music);
-    content.append(&effects);
-
-    let window = ApplicationWindow::builder()
-        .transient_for(parent)
-        .modal(true)
-        .title("TankRush Settings")
-        .default_width(320)
-        .default_height(220)
-        .child(&content)
-        .build();
-    window.present();
-}
-
-fn build_single_player_window(parent: &ApplicationWindow) {
-    let players_adjustment = Adjustment::new(1.0, 1.0, 4.0, 1.0, 1.0, 0.0);
-    let players = SpinButton::new(Some(&players_adjustment), 1.0, 0);
-    let maps = ComboBoxText::new();
-    maps.append_text("Small Maze");
-    maps.append_text("Medium Maze");
-    maps.append_text("Large Maze");
-    maps.append_text("Very Large Maze");
-    maps.set_active(Some(0));
-
-    let bindings = Rc::new(RefCell::new(default_controls()));
-    let mut name_entries = Vec::new();
-    let mut control_rows = Vec::new();
-    for player in 0..4 {
-        let row = Box::new(Orientation::Horizontal, 6);
-        let name = Entry::new();
-        name.set_text(&format!("Player {}", player + 1));
-        name.set_width_chars(12);
-        row.append(&Label::new(Some(&format!("P{}", player + 1))));
-        row.append(&name);
-        let labels = ["↑", "↓", "←", "→", "FIRE"];
-        for action in 0..5 {
-            let button = Button::with_label(&key_label(&bindings.borrow()[player].keys[action]));
-            button.set_tooltip_text(Some(labels[action]));
-            bind_control_button(parent, &button, &bindings, player, action);
-            row.append(&button);
-        }
-        name_entries.push(name);
-        control_rows.push(row);
-    }
-
-    let content = Box::new(Orientation::Vertical, 10);
-    content.set_margin_top(22);
-    content.set_margin_bottom(22);
-    content.set_margin_start(22);
-    content.set_margin_end(22);
-    content.append(&Label::new(Some("Single Player / Local Battle")));
-    content.append(&Label::new(Some("Choose the number of tanks, names and controls.")));
-    content.append(&Label::new(Some("Players (1–4)")));
-    content.append(&players);
-    content.append(&Label::new(Some("Map")));
-    content.append(&maps);
-    content.append(&Label::new(Some("Player setup")));
-    for row in control_rows {
-        content.append(&row);
-    }
-
-    let start = Button::with_label("Start Match");
-    let cancel = Button::with_label("Back");
-    let actions = Box::new(Orientation::Horizontal, 8);
-    actions.append(&cancel);
-    actions.append(&start);
-    content.append(&actions);
-
-    let window = ApplicationWindow::builder()
-        .transient_for(parent)
-        .modal(true)
-        .title("TankRush — Match Setup")
-        .default_width(780)
-        .default_height(520)
-        .child(&content)
-        .build();
-
-    let parent_for_start = parent.clone();
-    let window_for_start = window.clone();
-    start.connect_clicked(move |_| {
-        let player_count = players.value_as_int().clamp(1, 4) as usize;
-        let map_size = match maps.active_text().as_deref() {
-            Some("Medium Maze") => MapSize::Medium,
-            Some("Large Maze") => MapSize::Large,
-            Some("Very Large Maze") => MapSize::VeryLarge,
-            _ => MapSize::Small,
-        };
-        let names = name_entries
-            .iter()
-            .take(player_count)
-            .enumerate()
-            .map(|(index, entry)| {
-                let name = entry.text().trim().to_string();
-                if name.is_empty() {
-                    format!("Player {}", index + 1)
-                } else {
-                    name.chars().take(18).collect()
-                }
-            })
-            .collect::<Vec<_>>();
-        let selected_bindings = bindings.borrow().clone();
-        window_for_start.close();
-        build_game_window(
-            &parent_for_start,
-            player_count,
-            map_size,
-            names,
-            selected_bindings,
-        );
-    });
-
-    let window_for_cancel = window.clone();
-    cancel.connect_clicked(move |_| window_for_cancel.close());
-    window.present();
-}
-
-fn apply_key(
-    player: usize,
-    name: &str,
-    pressed: bool,
-    bindings: &[ControlBindings],
-    input: &mut [TankInput; 4],
-    fire_pending: &mut [bool; 4],
-    fire_down: &mut [bool; 4],
-) -> bool {
-    if player >= bindings.len() {
-        return false;
-    }
-    let Some(action) = bindings[player].keys.iter().position(|key| key == name) else {
-        return false;
-    };
-    match action {
-        0 => input[player].forward = pressed,
-        1 => input[player].backward = pressed,
-        2 => input[player].left = pressed,
-        3 => input[player].right = pressed,
-        4 => {
-            if pressed && !fire_down[player] {
-                fire_pending[player] = true;
-            }
-            fire_down[player] = pressed;
-        }
-        _ => unreachable!(),
-    }
-    true
-}
-
 fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimulation) {
     let width = width as f64;
     let height = height as f64;
@@ -291,7 +66,7 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     let offset_x = (width - simulation.map.width as f64 * scale) / 2.0;
     let offset_y = (height - simulation.map.height as f64 * scale) / 2.0;
 
-    context.set_source_rgb(0.035, 0.045, 0.055);
+    context.set_source_rgb(0.025, 0.035, 0.042);
     context.paint().ok();
     context.save().ok();
     context.translate(offset_x, offset_y);
@@ -301,7 +76,25 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     context.rectangle(0.0, 0.0, simulation.map.width as f64, simulation.map.height as f64);
     context.fill().ok();
 
-    context.set_source_rgb(0.16, 0.20, 0.23);
+    // Subtle floor grid keeps the open rooms readable without turning the map
+    // into the dense barcode-like maze from the previous version.
+    context.set_source_rgb(0.065, 0.085, 0.095);
+    context.set_line_width(1.0);
+    let mut x = 16.0;
+    while x < simulation.map.width - 16.0 {
+        context.move_to(x as f64, 16.0);
+        context.line_to(x as f64, (simulation.map.height - 16.0) as f64);
+        x += 64.0;
+    }
+    let mut y = 16.0;
+    while y < simulation.map.height - 16.0 {
+        context.move_to(16.0, y as f64);
+        context.line_to((simulation.map.width - 16.0) as f64, y as f64);
+        y += 64.0;
+    }
+    context.stroke().ok();
+
+    context.set_source_rgb(0.18, 0.23, 0.27);
     for wall in &simulation.map.walls {
         context.rectangle(
             wall.min.x as f64,
@@ -313,11 +106,11 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
     }
 
     for projectile in &simulation.state.projectiles {
-        context.set_source_rgb(1.0, 0.85, 0.2);
+        context.set_source_rgb(1.0, 0.84, 0.22);
         context.arc(
             projectile.position.x as f64,
             projectile.position.y as f64,
-            simulation.config.projectile_radius as f64,
+            simulation.config.projectile_radius as f64 + 1.0,
             0.0,
             std::f64::consts::TAU,
         );
@@ -338,38 +131,61 @@ fn draw_game(context: &Context, width: i32, height: i32, simulation: &GameSimula
             std::f64::consts::TAU,
         );
         context.fill().ok();
+
         let direction = tank.direction();
-        context.set_line_width(5.0);
+        context.set_line_width(7.0);
+        context.set_line_cap(gtk4::cairo::LineCap::Round);
         context.move_to(tank.position.x as f64, tank.position.y as f64);
         context.line_to(
-            (tank.position.x + direction.x * 20.0) as f64,
-            (tank.position.y + direction.y * 20.0) as f64,
+            (tank.position.x + direction.x * 22.0) as f64,
+            (tank.position.y + direction.y * 22.0) as f64,
         );
         context.stroke().ok();
+
+        if let Some(player) = simulation.state.players.iter().find(|p| p.id == tank.player_id) {
+            context.set_font_size(11.0);
+            context.set_source_rgb(0.92, 0.94, 0.96);
+            context.move_to((tank.position.x - 22.0) as f64, (tank.position.y - 21.0) as f64);
+            context.show_text(&player.name).ok();
+        }
     }
 
     context.restore().ok();
-    context.set_source_rgb(0.9, 0.92, 0.95);
+
+    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
+    context.set_source_rgb(0.93, 0.95, 0.97);
     context.select_font_face(
         "Sans",
         gtk4::cairo::FontSlant::Normal,
         gtk4::cairo::FontWeight::Bold,
     );
-    context.set_font_size(16.0);
-    context.move_to(16.0, 26.0);
-    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
-    context
-        .show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
+    context.set_font_size(17.0);
+    context.move_to(18.0, 28.0);
+    context.show_text(&format!("TANKRUSH  •  Survivors: {alive}"))
         .ok();
+
+    if alive <= 1 && !simulation.state.tanks.is_empty() {
+        let winner = simulation
+            .state
+            .tanks
+            .iter()
+            .find(|tank| tank.alive)
+            .and_then(|tank| simulation.state.players.iter().find(|p| p.id == tank.player_id));
+        if let Some(player) = winner {
+            context.set_font_size(24.0);
+            context.move_to(24.0, height - 28.0);
+            context.show_text(&format!("Winner: {}", player.name)).ok();
+        }
+    }
 }
 
-fn build_game_window(
-    parent: &ApplicationWindow,
+fn build_game_screen(
+    stack: &Stack,
     player_count: usize,
     map_size: MapSize,
     names: Vec<String>,
     bindings: Vec<ControlBindings>,
-) {
+) -> Box {
     let config = GameConfig::default();
     let mut simulation = GameSimulation::new(GameMap::generate(map_size), config);
     let spawn_points = simulation.map.spawn_points().to_vec();
@@ -377,7 +193,7 @@ fn build_game_window(
         let player_id = simulation
             .state
             .add_player(names[index].clone(), None)
-            .expect("player count is capped at four");
+            .expect("local player count is capped at four");
         simulation.state.add_tank(player_id, spawn_points[index]);
     }
 
@@ -385,11 +201,28 @@ fn build_game_window(
     let inputs = Rc::new(RefCell::new([TankInput::idle(); 4]));
     let fire_pending = Rc::new(RefCell::new([false; 4]));
     let fire_down = Rc::new(RefCell::new([false; 4]));
-    let drawing_area = DrawingArea::new();
-    drawing_area.set_content_width(960);
-    drawing_area.set_content_height(640);
-    drawing_area.set_focusable(true);
+    let game_active = Rc::new(Cell::new(true));
 
+    let root = Box::new(Orientation::Vertical, 0);
+    let toolbar = Box::new(Orientation::Horizontal, 8);
+    toolbar.set_margin_top(8);
+    toolbar.set_margin_bottom(8);
+    toolbar.set_margin_start(10);
+    toolbar.set_margin_end(10);
+    let title = Label::new(Some("TankRush  •  Battle Arena"));
+    title.set_hexpand(true);
+    title.set_halign(gtk4::Align::Start);
+    let back = Button::with_label("Back to Menu");
+    toolbar.append(&title);
+    toolbar.append(&back);
+    root.append(&toolbar);
+
+    let drawing_area = DrawingArea::new();
+    drawing_area.set_content_width(1100);
+    drawing_area.set_content_height(700);
+    drawing_area.set_hexpand(true);
+    drawing_area.set_vexpand(true);
+    drawing_area.set_focusable(true);
     {
         let simulation = Rc::clone(&simulation);
         drawing_area.set_draw_func(move |_, context, width, height| {
@@ -412,9 +245,23 @@ fn build_game_window(
             let mut pending = fire_pending.borrow_mut();
             let mut down = fire_down.borrow_mut();
             for player in 0..player_count {
-                if apply_key(player, &name, true, &bindings, &mut input, &mut pending, &mut down) {
-                    return Propagation::Stop;
+                let Some(action) = bindings[player].keys.iter().position(|key| key == &name) else {
+                    continue;
+                };
+                match action {
+                    0 => input[player].forward = true,
+                    1 => input[player].backward = true,
+                    2 => input[player].left = true,
+                    3 => input[player].right = true,
+                    4 => {
+                        if !down[player] {
+                            pending[player] = true;
+                        }
+                        down[player] = true;
+                    }
+                    _ => unreachable!(),
                 }
+                return Propagation::Stop;
             }
             Propagation::Proceed
         });
@@ -429,29 +276,34 @@ fn build_game_window(
             };
             let name = name.to_string();
             let mut input = inputs.borrow_mut();
-            let mut pending = [false; 4];
             let mut down = fire_down.borrow_mut();
             for player in 0..player_count {
-                apply_key(player, &name, false, &bindings, &mut input, &mut pending, &mut down);
+                let Some(action) = bindings[player].keys.iter().position(|key| key == &name) else {
+                    continue;
+                };
+                match action {
+                    0 => input[player].forward = false,
+                    1 => input[player].backward = false,
+                    2 => input[player].left = false,
+                    3 => input[player].right = false,
+                    4 => down[player] = false,
+                    _ => unreachable!(),
+                }
             }
         });
     }
     drawing_area.add_controller(key_controller);
+    root.append(&drawing_area);
 
-    let game_window = ApplicationWindow::builder()
-        .transient_for(parent)
-        .modal(true)
-        .title("TankRush — Match")
-        .default_width(1000)
-        .default_height(700)
-        .child(&drawing_area)
-        .build();
-
+    let timer_active = Rc::clone(&game_active);
     let simulation_for_timer = Rc::clone(&simulation);
     let inputs_for_timer = Rc::clone(&inputs);
     let pending_for_timer = Rc::clone(&fire_pending);
     let drawing_for_timer = drawing_area.clone();
     glib::source::timeout_add_local(Duration::from_millis(16), move || {
+        if !timer_active.get() {
+            return ControlFlow::Break;
+        }
         let mut input_snapshot = inputs_for_timer.borrow().to_vec();
         let mut pending = pending_for_timer.borrow_mut();
         for index in 0..player_count {
@@ -473,76 +325,264 @@ fn build_game_window(
         ControlFlow::Continue
     });
 
-    game_window.present();
-    drawing_area.grab_focus();
+    let stack_for_back = stack.clone();
+    let active_for_back = Rc::clone(&game_active);
+    back.connect_clicked(move |_| {
+        active_for_back.set(false);
+        stack_for_back.set_visible_child_name("menu");
+    });
+
+    root
 }
 
-fn build_ui(app: &Application) {
-    let audio_settings = Rc::new(RefCell::new(game::config::AudioSettings::default()));
+fn build_setup_screen(stack: &Stack, player_count: SpinButton, bindings: Rc<RefCell<Vec<ControlBindings>>>) -> Box {
+    let root = Box::new(Orientation::Vertical, 12);
+    root.set_margin_top(28);
+    root.set_margin_bottom(28);
+    root.set_margin_start(36);
+    root.set_margin_end(36);
+
+    let title = Label::new(Some("Local Battle Setup"));
+    title.add_css_class("title-2");
+    root.append(&title);
+    root.append(&Label::new(Some("TankTrouble-style local arena: 1–4 players, custom names and controls.")));
+
+    let players_adjustment = Adjustment::new(2.0, 1.0, 4.0, 1.0, 1.0, 0.0);
+    player_count.set_adjustment(&players_adjustment);
+    root.append(&Label::new(Some("Players")));
+    root.append(&player_count);
+
+    let maps = ComboBoxText::new();
+    maps.append_text("Small Arena");
+    maps.append_text("Medium Arena");
+    maps.append_text("Large Arena");
+    maps.append_text("Very Large Arena");
+    maps.set_active(Some(1));
+    root.append(&Label::new(Some("Arena size")));
+    root.append(&maps);
+
+    let setup_grid = Box::new(Orientation::Vertical, 7);
+    let pending = Rc::new(RefCell::new(None::<(usize, usize)>));
+    let pending_label = Label::new(Some("Choose a control button, then press a key. Escape cancels."));
+    pending_label.add_css_class("dim-label");
+
+    for player in 0..4 {
+        let row = Box::new(Orientation::Horizontal, 7);
+        let name = Entry::new();
+        name.set_text(&format!("Player {}", player + 1));
+        name.set_width_chars(14);
+        row.append(&Label::new(Some(&format!("P{}", player + 1))));
+        row.append(&name);
+
+        let actions = ["FWD", "BACK", "LEFT", "RIGHT", "FIRE"];
+        for action in 0..5 {
+            let button = Button::with_label(&key_label(&bindings.borrow()[player].keys[action]));
+            button.set_tooltip_text(Some(actions[action]));
+            let pending = Rc::clone(&pending);
+            let pending_label = pending_label.clone();
+            button.connect_clicked(move |button| {
+                *pending.borrow_mut() = Some((player, action));
+                pending_label.set_text(&format!("P{} {}: press the new key…", player + 1, actions[action]));
+                button.add_css_class("suggested-action");
+            });
+            row.append(&button);
+        }
+        setup_grid.append(&row);
+    }
+    root.append(&Label::new(Some("Player names and controls")));
+    root.append(&setup_grid);
+    root.append(&pending_label);
+
+    // Key capture stays inside the setup page, so control assignment no longer
+    // creates another GTK window.
+    let key_controller = EventControllerKey::new();
+    {
+        let pending = Rc::clone(&pending);
+        let bindings = Rc::clone(&bindings);
+        let pending_label = pending_label.clone();
+        key_controller.connect_key_pressed(move |_, key, _, _| {
+            let Some(name) = key.name() else {
+                return Propagation::Stop;
+            };
+            let name = name.to_string();
+            if name == "Escape" {
+                *pending.borrow_mut() = None;
+                pending_label.set_text("Control assignment cancelled.");
+                return Propagation::Stop;
+            }
+            if let Some((player, action)) = *pending.borrow() {
+                bindings.borrow_mut()[player].keys[action] = name.clone();
+                pending_label.set_text(&format!("P{} control changed to {}.", player + 1, key_label(&name)));
+                *pending.borrow_mut() = None;
+            }
+            Propagation::Stop
+        });
+    }
+    root.add_controller(key_controller);
+
+    let actions = Box::new(Orientation::Horizontal, 8);
+    let back = Button::with_label("Back");
+    let start = Button::with_label("Start Match");
+    actions.append(&back);
+    actions.append(&start);
+    root.append(&actions);
+
+    let stack_for_back = stack.clone();
+    back.connect_clicked(move |_| stack_for_back.set_visible_child_name("menu"));
+
+    let stack_for_start = stack.clone();
+    let bindings_for_start = Rc::clone(&bindings);
+    let player_count_for_start = player_count.clone();
+    start.connect_clicked(move |_| {
+        let count = player_count_for_start.value_as_int().clamp(1, 4) as usize;
+        let map_size = match maps.active_text().as_deref() {
+            Some("Medium Arena") => MapSize::Medium,
+            Some("Large Arena") => MapSize::Large,
+            Some("Very Large Arena") => MapSize::VeryLarge,
+            _ => MapSize::Small,
+        };
+        let mut names = Vec::with_capacity(count);
+        for index in 0..count {
+            names.push(format!("Player {}", index + 1));
+        }
+        let game = build_game_screen(
+            &stack_for_start,
+            count,
+            map_size,
+            names,
+            bindings_for_start.borrow().clone(),
+        );
+        if let Some(old) = stack_for_start.child_by_name("game") {
+            stack_for_start.remove(&old);
+        }
+        stack_for_start.add_named(&game, Some("game"));
+        stack_for_start.set_visible_child_name("game");
+        game.grab_focus();
+    });
+
+    root
+}
+
+fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSettings>>) -> Box {
+    let content = Box::new(Orientation::Vertical, 12);
+    content.set_margin_top(60);
+    content.set_margin_bottom(60);
+    content.set_margin_start(60);
+    content.set_margin_end(60);
+    content.set_halign(gtk4::Align::Center);
+    content.set_valign(gtk4::Align::Center);
 
     let title = Label::new(Some("TANKRUSH"));
     title.add_css_class("title-1");
-    let subtitle = Label::new(Some("Rust + GTK4 tank arena"));
+    let subtitle = Label::new(Some("Tank arena • ricochet combat • 1–4 local players"));
     subtitle.add_css_class("dim-label");
-
-    let single_player = Button::with_label("Single Player");
-    let multiplayer = Button::with_label("LAN Multiplayer");
-    let settings = Button::with_label("Settings");
-    let quit = Button::with_label("Quit");
-
-    let content = Box::new(Orientation::Vertical, 12);
-    content.set_margin_top(48);
-    content.set_margin_bottom(48);
-    content.set_margin_start(48);
-    content.set_margin_end(48);
-    content.set_halign(gtk4::Align::Center);
-    content.set_valign(gtk4::Align::Center);
     content.append(&title);
     content.append(&subtitle);
+
+    let single_player = Button::with_label("Single Player / Local Battle");
+    let lan = Button::with_label("LAN Multiplayer");
+    let settings = Button::with_label("Settings");
+    let quit = Button::with_label("Quit");
+    for button in [&single_player, &lan, &settings, &quit] {
+        button.set_width_request(280);
+    }
     content.append(&single_player);
-    content.append(&multiplayer);
+    content.append(&lan);
     content.append(&settings);
     content.append(&quit);
+
+    let stack_for_single = stack.clone();
+    single_player.connect_clicked(move |_| stack_for_single.set_visible_child_name("setup"));
+
+    let stack_for_lan = stack.clone();
+    lan.connect_clicked(move |_| stack_for_lan.set_visible_child_name("lan"));
+
+    let stack_for_settings = stack.clone();
+    let audio_for_settings = Rc::clone(&audio);
+    settings.connect_clicked(move |_| {
+        if let Some(page) = stack_for_settings.child_by_name("settings") {
+            stack_for_settings.remove(&page);
+        }
+        let page = Box::new(Orientation::Vertical, 12);
+        page.set_margin_top(32);
+        page.set_margin_start(36);
+        page.set_margin_end(36);
+        page.set_margin_bottom(32);
+        page.append(&Label::new(Some("Settings")));
+        let music = CheckButton::with_label("Music");
+        let effects = CheckButton::with_label("Sound effects");
+        music.set_active(audio_for_settings.borrow().music_enabled);
+        effects.set_active(audio_for_settings.borrow().sound_effects_enabled);
+        {
+            let audio = Rc::clone(&audio_for_settings);
+            music.connect_toggled(move |button| audio.borrow_mut().music_enabled = button.is_active());
+        }
+        {
+            let audio = Rc::clone(&audio_for_settings);
+            effects.connect_toggled(move |button| audio.borrow_mut().sound_effects_enabled = button.is_active());
+        }
+        page.append(&music);
+        page.append(&effects);
+        let back = Button::with_label("Back");
+        let stack = stack_for_settings.clone();
+        back.connect_clicked(move |_| stack.set_visible_child_name("menu"));
+        page.append(&back);
+        stack_for_settings.add_named(&page, Some("settings"));
+        stack_for_settings.set_visible_child_name("settings");
+    });
+
+    let stack_for_quit = stack.clone();
+    quit.connect_clicked(move |_| {
+        if let Some(root) = stack_for_quit.root() {
+            root.downcast::<ApplicationWindow>().ok().map(|window| window.close());
+        }
+    });
+
+    content
+}
+
+fn build_ui(app: &Application) {
+    let audio = Rc::new(RefCell::new(game::config::AudioSettings::default()));
+    let stack = Stack::new();
+    stack.set_vexpand(true);
+    stack.set_hexpand(true);
+
+    let menu = build_menu_screen(&stack, Rc::clone(&audio));
+    stack.add_named(&menu, Some("menu"));
+
+    let bindings = Rc::new(RefCell::new(default_controls()));
+    let players = SpinButton::with_range(1.0, 4.0, 1.0);
+    players.set_value(2.0);
+    let setup = build_setup_screen(&stack, players, bindings);
+    stack.add_named(&setup, Some("setup"));
+
+    let lan = Box::new(Orientation::Vertical, 12);
+    lan.set_margin_top(36);
+    lan.set_margin_start(36);
+    lan.set_margin_end(36);
+    lan.set_margin_bottom(36);
+    lan.append(&Label::new(Some("LAN Multiplayer")));
+    lan.append(&Label::new(Some(&format!(
+        "Authoritative LAN protocol v{} • lobby up to {} players.",
+        network::PROTOCOL_VERSION,
+        lobby::MAX_LOBBY_PLAYERS
+    ))));
+    lan.append(&Label::new(Some("Network gameplay is being integrated after the local arena core.")));
+    let lan_back = Button::with_label("Back");
+    let stack_for_lan = stack.clone();
+    lan_back.connect_clicked(move |_| stack_for_lan.set_visible_child_name("menu"));
+    lan.append(&lan_back);
+    stack.add_named(&lan, Some("lan"));
+
+    stack.set_visible_child_name("menu");
 
     let window = ApplicationWindow::builder()
         .application(app)
         .title("TankRush")
-        .default_width(720)
-        .default_height(540)
-        .child(&content)
+        .default_width(1200)
+        .default_height(800)
+        .child(&stack)
         .build();
-
-    let parent = window.clone();
-    single_player.connect_clicked(move |_| build_single_player_window(&parent));
-
-    let parent = window.clone();
-    multiplayer.connect_clicked(move |_| {
-        let dialog = ApplicationWindow::builder()
-            .transient_for(&parent)
-            .modal(true)
-            .title("LAN Multiplayer")
-            .default_width(420)
-            .default_height(220)
-            .child(&Label::new(Some(&format!(
-                "LAN protocol v{} is ready.\nLobby supports up to {} players.\nAuthoritative LAN session backend is available.",
-                network::PROTOCOL_VERSION,
-                lobby::MAX_LOBBY_PLAYERS
-            ))))
-            .build();
-        dialog.present();
-    });
-
-    let parent = window.clone();
-    let audio = Rc::clone(&audio_settings);
-    settings.connect_clicked(move |_| build_settings_window(&parent, Rc::clone(&audio)));
-
-    let app_weak = app.downgrade();
-    quit.connect_clicked(move |_| {
-        if let Some(app) = app_weak.upgrade() {
-            app.quit();
-        }
-    });
-
     window.present();
 }
 
