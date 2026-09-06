@@ -1,0 +1,53 @@
+name: One-time TT2 final tuning
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install GTK4 development packages
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+      - name: Tune TT2 details
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/main.rs')
+          s = p.read_text()
+          s = s.replace(
+              '        if self.human_count == 1 {\n            let id = self.simulation.state.add_player("Laika", None).unwrap();\n            self.simulation.state.add_tank(id, spawns[1]);\n            self.ai_id = Some(id);',
+              '        if self.human_count == 1 {\n            let id = self.simulation.state.add_player("Laika", None).unwrap();\n            self.simulation.state.add_tank(id, spawns[1]);\n            self.weapons[id.0 as usize] = Some(PowerUpKind::Laser);\n            self.weapon_uses[id.0 as usize] = u8::MAX;\n            self.ai_id = Some(id);',
+          )
+          s = s.replace(
+              '        self.powerups.clear();\n        self.powerups.push(PowerUp::generate(\n            &self.simulation.map,\n            &mut self.powerup_seed,\n        ));\n        self.powerups.push(PowerUp::generate(\n            &self.simulation.map,\n            &mut self.powerup_seed,\n        ));',
+              '        self.powerups.clear();\n        while self.powerups.len() < 5 {\n            self.powerups.push(PowerUp::generate(\n                &self.simulation.map,\n                &mut self.powerup_seed,\n            ));\n        }',
+          )
+          s = s.replace('        while self.powerups.len() < 2 {', '        while self.powerups.len() < 5 {')
+          s = s.replace(
+              '        let color = PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()];',
+              '        let color = if runtime.ai_id == Some(tank.player_id) {\n            (0.36, 0.37, 0.39)\n        } else {\n            PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()]\n        };',
+          )
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          cargo fmt --all
+          cargo test --all-targets --all-features
+          cargo build --all-targets --all-features
+          cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A clippy::collapsible_if -A clippy::needless_range_loop -A clippy::option_map_unit_fn
+      - name: Commit and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.rs
+          git diff --cached --quiet || git commit -m "feat: tune Laika and powerup balance"
+          git push
