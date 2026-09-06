@@ -17,6 +17,15 @@ impl MapSize {
             Self::VeryLarge => (56, 40),
         }
     }
+
+    const fn seed(self) -> u32 {
+        match self {
+            Self::Small => 0x1357_9BDF,
+            Self::Medium => 0x2468_ACE1,
+            Self::Large => 0x5A17_C0DE,
+            Self::VeryLarge => 0x71A9_42EF,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,11 +62,15 @@ impl GameMap {
     }
 
     pub fn generate(size: MapSize) -> Self {
-        let (cells_x, cells_y) = size.dimensions();
+        let (cells_x_total, cells_y_total) = size.dimensions();
         let cell = 32.0;
-        let width = cells_x as f32 * cell;
-        let height = cells_y as f32 * cell;
+        let width = cells_x_total as f32 * cell;
+        let height = cells_y_total as f32 * cell;
         let thickness = 16.0;
+        let cells_x = (cells_x_total - 2) as usize;
+        let cells_y = (cells_y_total - 2) as usize;
+        let cell_count = cells_x * cells_y;
+
         let mut walls = vec![
             Wall::new(Vec2::new(0.0, 0.0), Vec2::new(width, thickness)),
             Wall::new(Vec2::new(0.0, height - thickness), Vec2::new(width, height)),
@@ -65,56 +78,117 @@ impl GameMap {
             Wall::new(Vec2::new(width - thickness, 0.0), Vec2::new(width, height)),
         ];
 
-        let barrier_gap = 3u32;
-        let mut x = 6u32;
-        let mut column_index = 0u32;
-        while x + 2 < cells_x {
-            let gap = ((column_index * 3 + cells_y / 2) % (cells_y - 2)).max(1);
-            let gap_start = gap.saturating_sub(barrier_gap / 2);
-            if gap_start > 1 {
-                walls.push(Wall::new(
-                    Vec2::new(x as f32 * cell, 16.0),
-                    Vec2::new(x as f32 * cell + thickness, gap_start as f32 * cell),
-                ));
+        // A deterministic depth-first maze creates a connected labyrinth while
+        // changing the topology between the four map sizes.  No external RNG
+        // dependency is needed, which keeps the simulation deterministic.
+        let mut visited = vec![false; cell_count];
+        let mut passages = vec![[false; 4]; cell_count];
+        let mut stack = vec![(0usize, 0usize)];
+        visited[0] = true;
+        let mut seed = size.seed();
+
+        while let Some(&(x, y)) = stack.last() {
+            let mut options = [(0usize, 0usize, 0usize, 0usize); 4];
+            let mut option_count = 0;
+            let candidates = [
+                (0isize, -1isize, 0usize, 1usize),
+                (1, 0, 1, 0),
+                (0, 1, 2, 3),
+                (-1, 0, 3, 2),
+            ];
+            for &(dx, dy, direction, opposite) in &candidates {
+                let nx = x as isize + dx;
+                let ny = y as isize + dy;
+                if nx >= 0
+                    && ny >= 0
+                    && (nx as usize) < cells_x
+                    && (ny as usize) < cells_y
+                    && !visited[ny as usize * cells_x + nx as usize]
+                {
+                    options[option_count] = (nx as usize, ny as usize, direction, opposite);
+                    option_count += 1;
+                }
             }
-            let after_gap = gap_start + barrier_gap;
-            if after_gap + 1 < cells_y {
-                walls.push(Wall::new(
-                    Vec2::new(x as f32 * cell, after_gap as f32 * cell),
-                    Vec2::new(x as f32 * cell + thickness, height - 16.0),
-                ));
+
+            if option_count == 0 {
+                stack.pop();
+                continue;
             }
-            x += 6;
-            column_index += 1;
+
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let choice = (seed as usize) % option_count;
+            let (nx, ny, direction, opposite) = options[choice];
+            let current = y * cells_x + x;
+            let next = ny * cells_x + nx;
+            passages[current][direction] = true;
+            passages[next][opposite] = true;
+            visited[next] = true;
+            stack.push((nx, ny));
         }
 
-        let mut y = 5u32;
-        let mut row_index = 0u32;
-        while y + 2 < cells_y {
-            let gap = ((row_index * 5 + cells_x / 3) % (cells_x - 2)).max(1);
-            let gap_start = gap.saturating_sub(barrier_gap / 2);
-            if gap_start > 1 {
-                walls.push(Wall::new(
-                    Vec2::new(16.0, y as f32 * cell),
-                    Vec2::new(gap_start as f32 * cell, y as f32 * cell + thickness),
-                ));
+        // Remove a handful of walls to create wider tactical lanes.  These
+        // openings keep the maze from becoming a sequence of one-cell tunnels.
+        let extra_openings = (cells_x * cells_y / 18).max(2);
+        for _ in 0..extra_openings {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let x = (seed as usize) % cells_x;
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let y = (seed as usize) % cells_y;
+            let directions = [1usize, 2usize, 3usize, 0usize];
+            let direction = directions[(seed as usize) % directions.len()];
+            let (dx, dy, opposite) = match direction {
+                0 => (0isize, -1isize, 2usize),
+                1 => (1, 0, 3),
+                2 => (0, 1, 0),
+                _ => (-1, 0, 1),
+            };
+            let nx = x as isize + dx;
+            let ny = y as isize + dy;
+            if nx >= 0 && ny >= 0 && (nx as usize) < cells_x && (ny as usize) < cells_y {
+                let current = y * cells_x + x;
+                let next = ny as usize * cells_x + nx as usize;
+                passages[current][direction] = true;
+                passages[next][opposite] = true;
             }
-            let after_gap = gap_start + barrier_gap;
-            if after_gap + 1 < cells_x {
-                walls.push(Wall::new(
-                    Vec2::new(after_gap as f32 * cell, y as f32 * cell),
-                    Vec2::new(width - 16.0, y as f32 * cell + thickness),
-                ));
-            }
-            y += 6;
-            row_index += 1;
         }
 
-        let spawn_points = (0..5)
-            .flat_map(|index| {
-                let x = 64.0 + (width - 128.0) * index as f32 / 4.0;
-                [Vec2::new(x, 64.0), Vec2::new(x, height - 64.0)]
-            })
+        for y in 0..cells_y {
+            for x in 0..cells_x {
+                let index = y * cells_x + x;
+                let left = 16.0 + x as f32 * cell;
+                let top = 16.0 + y as f32 * cell;
+                if x + 1 < cells_x && !passages[index][1] {
+                    let wall_x = left + cell;
+                    walls.push(Wall::new(
+                        Vec2::new(wall_x - thickness / 2.0, top),
+                        Vec2::new(wall_x + thickness / 2.0, top + cell),
+                    ));
+                }
+                if y + 1 < cells_y && !passages[index][2] {
+                    let wall_y = top + cell;
+                    walls.push(Wall::new(
+                        Vec2::new(left, wall_y - thickness / 2.0),
+                        Vec2::new(left + cell, wall_y + thickness / 2.0),
+                    ));
+                }
+            }
+        }
+
+        let spawn_cells = [
+            (0usize, 0usize),
+            (cells_x - 1, 0),
+            (0, cells_y - 1),
+            (cells_x - 1, cells_y - 1),
+            (cells_x / 2, 0),
+            (cells_x / 2, cells_y - 1),
+            (0, cells_y / 2),
+            (cells_x - 1, cells_y / 2),
+            (cells_x / 3, cells_y / 3),
+            ((cells_x * 2) / 3, (cells_y * 2) / 3),
+        ];
+        let spawn_points = spawn_cells
+            .into_iter()
+            .map(|(x, y)| Vec2::new(32.0 + x as f32 * cell, 32.0 + y as f32 * cell))
             .collect();
 
         Self {
@@ -164,5 +238,13 @@ mod tests {
                 .iter()
                 .all(|&p| map.is_inside_play_area(p, 14.0))
         );
+    }
+
+    #[test]
+    fn generated_map_is_deterministic() {
+        let first = GameMap::generate(MapSize::Large);
+        let second = GameMap::generate(MapSize::Large);
+        assert_eq!(first.walls, second.walls);
+        assert_eq!(first.spawn_points, second.spawn_points);
     }
 }
