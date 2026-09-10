@@ -7,15 +7,17 @@ pub enum PowerUpKind {
     Laser,
     GuidedMissile,
     Shrapnel,
+    Mine,
 }
 
 impl PowerUpKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::DoubleShot,
         Self::MachineGun,
         Self::Laser,
         Self::GuidedMissile,
         Self::Shrapnel,
+        Self::Mine,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -25,15 +27,17 @@ impl PowerUpKind {
             Self::Laser => "ϟ LASER",
             Self::GuidedMissile => "➤ GUIDED",
             Self::Shrapnel => "✣ FRAG",
+            Self::Mine => "✹ MINE",
         }
     }
 
-    /// Number of shots granted when the pickup is collected.
-    /// `None` means that the weapon is not limited by a finite ammo count.
-    /// Keeping this rule in the engine avoids duplicating weapon policy in the UI.
     pub const fn ammo(self) -> Option<u8> {
         match self {
-            Self::DoubleShot | Self::Laser | Self::GuidedMissile | Self::Shrapnel => Some(1),
+            Self::DoubleShot
+            | Self::Laser
+            | Self::GuidedMissile
+            | Self::Shrapnel
+            | Self::Mine => Some(1),
             Self::MachineGun => Some(8),
         }
     }
@@ -92,6 +96,7 @@ mod tests {
         assert_eq!(PowerUpKind::Laser.ammo(), Some(1));
         assert_eq!(PowerUpKind::GuidedMissile.ammo(), Some(1));
         assert_eq!(PowerUpKind::Shrapnel.ammo(), Some(1));
+        assert_eq!(PowerUpKind::Mine.ammo(), Some(1));
     }
 
     #[test]
@@ -101,5 +106,6 @@ mod tests {
         assert!(!PowerUpKind::Laser.is_standard_augment());
         assert!(!PowerUpKind::GuidedMissile.is_standard_augment());
         assert!(!PowerUpKind::Shrapnel.is_standard_augment());
+        assert!(!PowerUpKind::Mine.is_standard_augment());
     }
 }
