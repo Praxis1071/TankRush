@@ -27,6 +27,20 @@ impl PowerUpKind {
             Self::Shrapnel => "✣ FRAG",
         }
     }
+
+    /// Number of shots granted when the pickup is collected.
+    /// `None` means that the weapon is not limited by a finite ammo count.
+    /// Keeping this rule in the engine avoids duplicating weapon policy in the UI.
+    pub const fn ammo(self) -> Option<u8> {
+        match self {
+            Self::DoubleShot | Self::Laser | Self::GuidedMissile | Self::Shrapnel => Some(1),
+            Self::MachineGun => Some(8),
+        }
+    }
+
+    pub const fn is_standard_augment(self) -> bool {
+        matches!(self, Self::DoubleShot)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -69,5 +83,23 @@ mod tests {
         for kind in PowerUpKind::ALL {
             assert!(kind.label().chars().count() > 3);
         }
+    }
+
+    #[test]
+    fn weapon_ammo_policy_is_explicit() {
+        assert_eq!(PowerUpKind::DoubleShot.ammo(), Some(1));
+        assert_eq!(PowerUpKind::MachineGun.ammo(), Some(8));
+        assert_eq!(PowerUpKind::Laser.ammo(), Some(1));
+        assert_eq!(PowerUpKind::GuidedMissile.ammo(), Some(1));
+        assert_eq!(PowerUpKind::Shrapnel.ammo(), Some(1));
+    }
+
+    #[test]
+    fn double_shot_is_the_only_current_augment_weapon() {
+        assert!(PowerUpKind::DoubleShot.is_standard_augment());
+        assert!(!PowerUpKind::MachineGun.is_standard_augment());
+        assert!(!PowerUpKind::Laser.is_standard_augment());
+        assert!(!PowerUpKind::GuidedMissile.is_standard_augment());
+        assert!(!PowerUpKind::Shrapnel.is_standard_augment());
     }
 }
