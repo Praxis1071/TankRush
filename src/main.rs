@@ -9,8 +9,8 @@ use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use game::{
-    AiController, GameConfig, GameMap, GameSimulation, MapSize, PlayerId, PowerUp, PowerUpKind,
-    RoundState, TankInput, Vec2,
+    AiController, GameConfig, GameMap, GameSimulation, MapSize, Mine, PlayerId, PowerUp,
+    PowerUpKind, RoundState, TankInput, Vec2,
 };
 use glib::{ControlFlow, Propagation};
 use gtk4::cairo::Context;
@@ -23,10 +23,10 @@ use gtk4::{
 
 const APP_ID: &str = "io.github.praxis1071.TankRush";
 const PLAYER_COLORS: [(f64, f64, f64); 4] = [
-    (0.25, 0.95, 0.35),
-    (0.95, 0.20, 0.22),
-    (0.20, 0.55, 1.0),
-    (1.0, 0.82, 0.18),
+    (1.0, 0.78, 0.12),
+    (0.08, 0.09, 0.10),
+    (0.95, 0.76, 0.18),
+    (0.16, 0.17, 0.18),
 ];
 
 #[derive(Debug, Clone)]
@@ -82,6 +82,8 @@ struct MatchRuntime {
     weapons: [Option<PowerUpKind>; 4],
     weapon_uses: [u8; 4],
     powerups: Vec<PowerUp>,
+    mines: Vec<Mine>,
+    next_mine_id: u32,
     powerup_seed: u32,
     round_winner: Option<PlayerId>,
     draw_round: bool,
@@ -113,6 +115,8 @@ impl MatchRuntime {
             weapons: [None; 4],
             weapon_uses: [0; 4],
             powerups: Vec::new(),
+            mines: Vec::new(),
+            next_mine_id: 1,
             powerup_seed: seed ^ 0xA51C_39E7,
             round_winner: None,
             draw_round: false,
@@ -138,6 +142,8 @@ impl MatchRuntime {
         self.ai_id = None;
         self.paused = false;
         self.guided_projectiles.clear();
+        self.mines.clear();
+        self.next_mine_id = 1;
         let spawns = self.simulation.map.spawn_points().to_vec();
         for index in 0..self.human_count {
             let id = self
@@ -198,6 +204,17 @@ impl MatchRuntime {
             ));
         }
         pairs
+    }
+
+    fn consume_weapon(&mut self, owner: PlayerId) {
+        let index = owner.0 as usize;
+        if index >= 4 {
+            return;
+        }
+        self.weapon_uses[index] = self.weapon_uses[index].saturating_sub(1);
+        if self.weapon_uses[index] == 0 {
+            self.weapons[index] = None;
+        }
     }
 
     fn apply_weapon(&mut self, owner: PlayerId) {
@@ -289,11 +306,31 @@ impl MatchRuntime {
                     angle += 0.26;
                 }
             }
+            PowerUpKind::Mine => {
+                let Some(tank) = self
+                    .simulation
+                    .state
+                    .tanks
+                    .iter()
+                    .find(|tank| tank.player_id == owner && tank.alive)
+                else {
+                    return;
+                };
+                if Mine::valid_position(
+                    tank.position,
+                    &self.simulation.map,
+                    self.simulation.config.tank_radius,
+                ) {
+                    self.mines.push(Mine::new(
+                        self.next_mine_id,
+                        owner,
+                        tank.position,
+                    ));
+                    self.next_mine_id = self.next_mine_id.wrapping_add(1).max(1);
+                }
+            }
         }
-        self.weapon_uses[index] = self.weapon_uses[index].saturating_sub(1);
-        if self.weapon_uses[index] == 0 {
-            self.weapons[index] = None;
-        }
+        self.consume_weapon(owner);
     }
 
     fn collect_powerups(&mut self) {
@@ -312,10 +349,7 @@ impl MatchRuntime {
                 let player = tank.player_id.0 as usize;
                 if player < 4 {
                     self.weapons[player] = Some(powerup.kind);
-                    self.weapon_uses[player] = match powerup.kind {
-                        PowerUpKind::MachineGun => 8,
-                        _ => 1,
-                    };
+                    self.weapon_uses[player] = powerup.kind.ammo().unwrap_or(u8::MAX);
                     collected.push(index);
                 }
             }
@@ -329,6 +363,23 @@ impl MatchRuntime {
                 &mut self.powerup_seed,
             ));
         }
+    }
+
+    fn update_mines(&mut self, dt: f32) {
+        for mine in &mut self.mines {
+            mine.update(dt);
+        }
+        let triggered = self
+            .mines
+            .iter()
+            .filter_map(|mine| mine.triggered_by(&self.simulation.state).map(|id| (mine.id, id)))
+            .collect::<Vec<_>>();
+        for (_, player_id) in triggered {
+            self.simulation.state.destroy_tank(player_id);
+        }
+        self.mines.retain(|mine| {
+            !mine.expired() && !triggered.iter().any(|(id, _)| *id == mine.id)
+        });
     }
 
     fn guide_projectiles(&mut self) {
@@ -394,6 +445,7 @@ impl MatchRuntime {
             }
         }
         self.guide_projectiles();
+        self.update_mines(dt);
         self.collect_powerups();
         let alive = self
             .simulation
@@ -409,8 +461,8 @@ impl MatchRuntime {
                 .tanks
                 .iter()
                 .find(|t| t.alive)
-                .map(|t| t.player_id)
-                .unwrap();
+                .unwrap()
+                .player_id;
             self.round.award(winner);
             self.round_winner = Some(winner);
             self.respawn_countdown = 2.5;
@@ -435,12 +487,7 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
     context.translate(offset_x, offset_y);
     context.scale(scale, scale);
     context.set_source_rgb(0.88, 0.89, 0.90);
-    context.rectangle(
-        0.0,
-        0.0,
-        simulation.map.width as f64,
-        simulation.map.height as f64,
-    );
+    context.rectangle(0.0, 0.0, simulation.map.width as f64, simulation.map.height as f64);
     context.fill().ok();
 
     context.set_source_rgb(0.16, 0.17, 0.18);
@@ -473,9 +520,32 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         context.show_text(powerup.kind.label()).ok();
     }
 
+    for mine in &runtime.mines {
+        context.set_source_rgb(0.025, 0.025, 0.03);
+        context.arc(
+            mine.position.x as f64,
+            mine.position.y as f64,
+            8.0,
+            0.0,
+            std::f64::consts::TAU,
+        );
+        context.fill().ok();
+        if mine.armed() {
+            context.set_source_rgb(0.95, 0.70, 0.12);
+            context.arc(
+                mine.position.x as f64,
+                mine.position.y as f64,
+                3.0,
+                0.0,
+                std::f64::consts::TAU,
+            );
+            context.fill().ok();
+        }
+    }
+
     for projectile in &simulation.state.projectiles {
         let velocity = projectile.velocity.normalized();
-        context.set_source_rgba(1.0, 0.78, 0.16, 0.22);
+        context.set_source_rgba(0.02, 0.02, 0.025, 0.25);
         context.set_line_width(2.5);
         context.move_to(
             (projectile.position.x - velocity.x * 12.0) as f64,
@@ -483,7 +553,7 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         );
         context.line_to(projectile.position.x as f64, projectile.position.y as f64);
         context.stroke().ok();
-        context.set_source_rgb(1.0, 0.84, 0.22);
+        context.set_source_rgb(0.01, 0.01, 0.012);
         context.arc(
             projectile.position.x as f64,
             projectile.position.y as f64,
@@ -493,6 +563,7 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         );
         context.fill().ok();
     }
+
     for tank in &simulation.state.tanks {
         if !tank.alive {
             context.set_source_rgba(0.10, 0.10, 0.10, 0.24);
@@ -506,16 +577,10 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
             context.fill().ok();
             continue;
         }
-        let color = if runtime.ai_id == Some(tank.player_id) {
-            (0.38, 0.39, 0.41)
-        } else {
-            PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()]
-        };
+        let color = PLAYER_COLORS[tank.player_id.0 as usize % PLAYER_COLORS.len()];
         context.save().ok();
         context.translate(tank.position.x as f64, tank.position.y as f64);
         context.rotate(tank.rotation_radians as f64);
-
-        // Ground shadow and heavy tracks.
         context.set_source_rgba(0.02, 0.03, 0.04, 0.28);
         context.rectangle(-19.0, -14.0, 38.0, 28.0);
         context.fill().ok();
@@ -523,63 +588,37 @@ fn draw_game(context: &Context, width: i32, height: i32, runtime: &MatchRuntime)
         context.rectangle(-18.0, -14.0, 36.0, 5.0);
         context.rectangle(-18.0, 9.0, 36.0, 5.0);
         context.fill().ok();
-
-        // Armored hull and color identification band.
         context.set_source_rgb(color.0 * 0.78, color.1 * 0.78, color.2 * 0.78);
         context.rectangle(-15.0, -10.0, 30.0, 20.0);
         context.fill().ok();
         context.set_source_rgb(color.0, color.1, color.2);
         context.rectangle(-14.0, -8.0, 28.0, 5.0);
         context.fill().ok();
-
-        // Turret ring and hatch.
         context.set_source_rgb(0.16, 0.17, 0.18);
         context.arc(0.0, 0.0, 9.0, 0.0, std::f64::consts::TAU);
         context.fill().ok();
         context.set_source_rgb(0.32, 0.33, 0.34);
         context.arc(0.0, 0.0, 5.5, 0.0, std::f64::consts::TAU);
         context.fill().ok();
-
-        // User-requested consistent black cannon silhouette.
         context.set_source_rgb(0.015, 0.015, 0.018);
         context.set_line_width(7.0);
         context.set_line_cap(gtk4::cairo::LineCap::Round);
         context.move_to(1.0, 0.0);
         context.line_to(25.0, 0.0);
         context.stroke().ok();
-        context.set_source_rgb(0.35, 0.36, 0.37);
-        context.set_line_width(2.0);
-        context.move_to(10.0, 0.0);
-        context.line_to(25.0, 0.0);
-        context.stroke().ok();
-
-        if runtime.ai_id == Some(tank.player_id) {
-            // Laika gets subtle red sensor details.
-            context.set_source_rgb(0.70, 0.06, 0.07);
-            context.arc(0.0, -2.5, 1.5, 0.0, std::f64::consts::TAU);
-            context.arc(0.0, 2.5, 1.5, 0.0, std::f64::consts::TAU);
-            context.fill().ok();
-        }
         context.restore().ok();
 
-        if runtime.ai_id != Some(tank.player_id) || tank.alive {
-            context.set_source_rgb(0.12, 0.14, 0.16);
-            context.set_font_size(11.0);
-            context.move_to(
-                (tank.position.x - 22.0) as f64,
-                (tank.position.y - 21.0) as f64,
-            );
-            context.show_text(&runtime.player_name(tank.player_id)).ok();
-        }
+        context.set_source_rgb(0.12, 0.14, 0.16);
+        context.set_font_size(11.0);
+        context.move_to(
+            (tank.position.x - 22.0) as f64,
+            (tank.position.y - 21.0) as f64,
+        );
+        context.show_text(&runtime.player_name(tank.player_id)).ok();
     }
     context.restore().ok();
 
-    let alive = simulation
-        .state
-        .tanks
-        .iter()
-        .filter(|tank| tank.alive)
-        .count();
+    let alive = simulation.state.tanks.iter().filter(|tank| tank.alive).count();
     context.set_source_rgb(0.93, 0.95, 0.97);
     context.select_font_face(
         "Sans",
@@ -819,33 +858,21 @@ fn build_setup_screen(
     player_count: SpinButton,
     bindings: Rc<RefCell<Vec<ControlBindings>>>,
 ) -> Box {
-    let root = Box::new(Orientation::Vertical, 12);
-    root.set_margin_top(28);
-    root.set_margin_bottom(28);
-    root.set_margin_start(36);
-    root.set_margin_end(36);
-    root.set_focusable(true);
-    let title = Label::new(Some("Local Battle Setup"));
-    title.add_css_class("title-2");
-    root.append(&title);
-    root.append(&Label::new(Some(
-        "1 player = vs Laika AI • 2–4 players = local free-for-all",
-    )));
-    let adjustment = Adjustment::new(2.0, 1.0, 4.0, 1.0, 1.0, 0.0);
-    player_count.set_adjustment(&adjustment);
+    let root = Box::new(Orientation::Vertical, 10);
+    root.set_margin_top(24);
+    root.set_margin_bottom(24);
+    root.set_margin_start(32);
+    root.set_margin_end(32);
+    root.append(&Label::new(Some("Local Battle Setup")));
+    let maps = ComboBoxText::new();
+    maps.append_text("Small Arena");
+    maps.append_text("Medium Arena");
+    maps.append_text("Large Arena");
+    maps.append_text("Very Large Arena");
+    maps.set_active(Some(0));
     root.append(&Label::new(Some("Players")));
     root.append(&player_count);
-    let maps = ComboBoxText::new();
-    for label in [
-        "Small Arena",
-        "Medium Arena",
-        "Large Arena",
-        "Very Large Arena",
-    ] {
-        maps.append_text(label);
-    }
-    maps.set_active(Some(1));
-    root.append(&Label::new(Some("Arena size")));
+    root.append(&Label::new(Some("Map size")));
     root.append(&maps);
     let powerups = CheckButton::with_label("Enable power-ups");
     powerups.set_active(true);
@@ -1010,7 +1037,6 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         tabs.set_hexpand(true);
         let switcher = StackSwitcher::new();
         switcher.set_stack(Some(&tabs));
-
         let general = Box::new(Orientation::Vertical, 12);
         general.append(&Label::new(Some("Audio")));
         let music = CheckButton::with_label("Music");
@@ -1032,7 +1058,6 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
             "Esc pauses the match. A new random arena is generated after each round.",
         )));
         tabs.add_titled(&general, Some("general"), "General");
-
         let about = Box::new(Orientation::Vertical, 10);
         about.set_margin_top(12);
         about.set_margin_start(8);
@@ -1050,7 +1075,6 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         ));
         about.append(&Label::new(Some("License: MIT")));
         tabs.add_titled(&about, Some("about"), "About");
-
         page.append(&switcher);
         page.append(&tabs);
         let back = Button::with_label("Back");
@@ -1094,7 +1118,7 @@ fn build_ui(app: &Application) {
     ))));
     lan.append(&Label::new(Some(
         "LAN gameplay comes after the completed local arena core.",
-    )));
+    ))));
     let back = Button::with_label("Back");
     let s = stack.clone();
     back.connect_clicked(move |_| s.set_visible_child_name("menu"));
