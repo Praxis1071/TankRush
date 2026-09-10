@@ -4,6 +4,7 @@ pub mod config;
 pub mod entity;
 pub mod map;
 pub mod math;
+pub mod mine;
 pub mod powerup;
 pub mod round;
 pub mod rules;
@@ -16,6 +17,7 @@ pub use entity::{GameState, Player, PlayerId, Projectile, ProjectileId, Tank, Te
 #[allow(unused_imports)]
 pub use map::{GameMap, MapSize, Wall};
 pub use math::Vec2;
+pub use mine::Mine;
 pub use powerup::{PowerUp, PowerUpKind};
 pub use round::RoundState;
 #[allow(unused_imports)]
