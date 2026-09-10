@@ -374,7 +374,7 @@ impl MatchRuntime {
             .iter()
             .filter_map(|mine| mine.triggered_by(&self.simulation.state).map(|id| (mine.id, id)))
             .collect::<Vec<_>>();
-        for (_, player_id) in triggered {
+        for (_, player_id) in triggered.iter().copied() {
             self.simulation.state.destroy_tank(player_id);
         }
         self.mines.retain(|mine| {
@@ -1115,10 +1115,10 @@ fn build_ui(app: &Application) {
         "Authoritative LAN protocol v{} • lobby up to {} players.",
         network::PROTOCOL_VERSION,
         lobby::MAX_LOBBY_PLAYERS
-    ))));
+    )));
     lan.append(&Label::new(Some(
         "LAN gameplay comes after the completed local arena core.",
-    ))));
+    )));
     let back = Button::with_label("Back");
     let s = stack.clone();
     back.connect_clicked(move |_| s.set_visible_child_name("menu"));
