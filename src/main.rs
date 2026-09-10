@@ -1115,7 +1115,7 @@ fn build_ui(app: &Application) {
         "Authoritative LAN protocol v{} • lobby up to {} players.",
         network::PROTOCOL_VERSION,
         lobby::MAX_LOBBY_PLAYERS
-    )));
+    ))));
     lan.append(&Label::new(Some(
         "LAN gameplay comes after the completed local arena core.",
     )));
