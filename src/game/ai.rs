@@ -1,4 +1,4 @@
-use super::{GameConfig, GameMap, GameState, PlayerId, PowerUp, TankInput, Vec2, collision};
+use super::{collision, GameConfig, GameMap, GameState, PlayerId, PowerUp, TankInput, Vec2};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AiController {
@@ -175,12 +175,7 @@ fn next_waypoint(position: Vec2, target: Vec2, map: &GameMap, radius: f32) -> Op
     let rooms_x = ((cells_x - 2) / 2) as i32;
     let rooms_y = ((cells_y - 2) / 2) as i32;
     let room_size = 64.0;
-    let center = |x: i32, y: i32| {
-        Vec2::new(
-            48.0 + x as f32 * room_size,
-            48.0 + y as f32 * room_size,
-        )
-    };
+    let center = |x: i32, y: i32| Vec2::new(48.0 + x as f32 * room_size, 48.0 + y as f32 * room_size);
     let nearest = |point: Vec2| {
         let x = ((point.x - 48.0) / room_size)
             .round()
@@ -327,10 +322,7 @@ mod tests {
 
     #[test]
     fn ai_targets_another_alive_tank() {
-        let mut sim = GameSimulation::new(
-            GameMap::generate(MapSize::Small),
-            GameConfig::default(),
-        );
+        let mut sim = GameSimulation::new(GameMap::generate(MapSize::Small), GameConfig::default());
         let ai = sim.state.add_player("AI", None).unwrap();
         let enemy = sim.state.add_player("Enemy", None).unwrap();
         sim.state.add_tank(ai, Vec2::new(100.0, 100.0));
