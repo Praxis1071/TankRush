@@ -1,4 +1,4 @@
-use super::{Vec2, map::Wall};
+use super::{map::Wall, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CollisionHit {
