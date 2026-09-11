@@ -1,4 +1,4 @@
-use super::{GameMap, GameState, PlayerId, Vec2, collision};
+use super::{collision, GameMap, GameState, PlayerId, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mine {
