@@ -1080,9 +1080,11 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         s.add_named(&page, Some("settings"));
         s.set_visible_child_name("settings");
     });
-    let app_quit = stack.root();
+    let app_quit = stack
+        .root()
+        .and_then(|root| root.downcast::<ApplicationWindow>().ok());
     quit.connect_clicked(move |_| {
-        if let Some(root) = app_quit.downcast_ref::<ApplicationWindow>() {
+        if let Some(root) = &app_quit {
             root.close();
         }
     });
