@@ -1,5 +1,3 @@
 style_edition = "2021"
 use_small_heuristics = "Default"
 reorder_imports = false
-fn_call_width = 120
-single_line_if_else_max_width = 120
