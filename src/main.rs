@@ -217,7 +217,7 @@ impl MatchRuntime {
         }
     }
 
-    fn apply_weapon(&mut self, owner: PlayerId) {
+    fn apply_weapon(&mut self, owner: PlayerId, fired_projectile: Option<game::ProjectileId>) {
         let index = owner.0 as usize;
         if index >= 4 {
             return;
@@ -225,18 +225,22 @@ impl MatchRuntime {
         let Some(kind) = self.weapons[index] else {
             return;
         };
+        let Some(base_id) = fired_projectile else {
+            return;
+        };
         match kind {
             PowerUpKind::DoubleShot => {
-                self.simulation.state.fire(owner, &self.simulation.config);
-                let ids = self
+                let Some(base) = self
                     .simulation
                     .state
                     .projectiles
                     .iter()
-                    .filter(|p| p.owner == owner)
-                    .map(|p| p.id)
-                    .collect::<Vec<_>>();
-                if let Some(id) = ids.last().copied() {
+                    .find(|p| p.id == base_id)
+                    .copied()
+                else {
+                    return;
+                };
+                if let Some(id) = self.simulation.state.fire(owner, &self.simulation.config) {
                     if let Some(projectile) = self
                         .simulation
                         .state
@@ -244,8 +248,8 @@ impl MatchRuntime {
                         .iter_mut()
                         .find(|p| p.id == id)
                     {
-                        let speed = projectile.velocity.length();
-                        let angle = projectile.velocity.y.atan2(projectile.velocity.x) + 0.20;
+                        let speed = base.velocity.length();
+                        let angle = base.velocity.y.atan2(base.velocity.x) + 0.20;
                         projectile.velocity = Vec2::new(angle.cos() * speed, angle.sin() * speed);
                     }
                 }
@@ -257,8 +261,7 @@ impl MatchRuntime {
                     .state
                     .projectiles
                     .iter_mut()
-                    .rev()
-                    .find(|p| p.owner == owner)
+                    .find(|p| p.id == base_id)
                 {
                     projectile.velocity = projectile.velocity * 1.8;
                     projectile.remaining_lifetime = 2.2;
@@ -270,8 +273,7 @@ impl MatchRuntime {
                     .state
                     .projectiles
                     .iter_mut()
-                    .rev()
-                    .find(|p| p.owner == owner)
+                    .find(|p| p.id == base_id)
                 {
                     projectile.velocity = projectile.velocity * 0.92;
                     projectile.remaining_lifetime = 5.0;
@@ -279,34 +281,49 @@ impl MatchRuntime {
                 }
             }
             PowerUpKind::Shrapnel => {
-                for _ in 0..5 {
-                    self.simulation.state.fire(owner, &self.simulation.config);
-                }
-                let mut angle = self
-                    .simulation
-                    .state
-                    .tanks
-                    .iter()
-                    .find(|t| t.player_id == owner)
-                    .map(|t| t.rotation_radians)
-                    .unwrap_or(0.0)
-                    - 0.65;
-                for projectile in self
+                let Some(base) = self
                     .simulation
                     .state
                     .projectiles
-                    .iter_mut()
-                    .rev()
-                    .filter(|p| p.owner == owner)
-                    .take(5)
-                {
-                    let speed = projectile.velocity.length();
-                    projectile.velocity = Vec2::new(angle.cos() * speed, angle.sin() * speed);
-                    projectile.remaining_lifetime = 2.0;
-                    angle += 0.26;
+                    .iter()
+                    .find(|p| p.id == base_id)
+                    .copied()
+                else {
+                    return;
+                };
+                let base_angle = base.velocity.y.atan2(base.velocity.x);
+                let offsets = [-0.52_f32, -0.26, 0.0, 0.26, 0.52];
+                for offset in offsets {
+                    if offset == 0.0 {
+                        if let Some(projectile) = self
+                            .simulation
+                            .state
+                            .projectiles
+                            .iter_mut()
+                            .find(|p| p.id == base_id)
+                        {
+                            projectile.remaining_lifetime = 2.0;
+                        }
+                        continue;
+                    }
+                    if let Some(id) = self.simulation.state.fire(owner, &self.simulation.config) {
+                        if let Some(projectile) = self
+                            .simulation
+                            .state
+                            .projectiles
+                            .iter_mut()
+                            .find(|p| p.id == id)
+                        {
+                            let speed = base.velocity.length();
+                            let angle = base_angle + offset;
+                            projectile.velocity = Vec2::new(angle.cos() * speed, angle.sin() * speed);
+                            projectile.remaining_lifetime = 2.0;
+                        }
+                    }
                 }
             }
             PowerUpKind::Mine => {
+                self.simulation.state.projectiles.retain(|p| p.id != base_id);
                 let Some(tank) = self
                     .simulation
                     .state
@@ -441,7 +458,7 @@ impl MatchRuntime {
         let events = self.simulation.advance(dt, &pairs);
         for event in events {
             if event.kind == game::SimulationEventKind::Fired {
-                self.apply_weapon(event.player_id);
+                self.apply_weapon(event.player_id, event.projectile_id);
             }
         }
         self.guide_projectiles();
@@ -1053,28 +1070,7 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         }
         general.append(&music);
         general.append(&effects);
-        general.append(&Label::new(Some("Gameplay")));
-        general.append(&Label::new(Some(
-            "Esc pauses the match. A new random arena is generated after each round.",
-        )));
         tabs.add_titled(&general, Some("general"), "General");
-        let about = Box::new(Orientation::Vertical, 10);
-        about.set_margin_top(12);
-        about.set_margin_start(8);
-        about.set_margin_end(8);
-        about.append(&Label::new(Some("About TankRush")));
-        about.append(&Label::new(Some(
-            "TankRush is a Rust + GTK4 tank arena project inspired by classic ricochet tank games.",
-        )));
-        about.append(&Label::new(Some("Developer")));
-        about.append(&Label::new(Some("Praxis1071")));
-        about.append(&Label::new(Some("Source code")));
-        about.append(&LinkButton::with_label(
-            "https://github.com/Praxis1071/TankRush",
-            "GitHub • Praxis1071/TankRush",
-        ));
-        about.append(&Label::new(Some("License: MIT")));
-        tabs.add_titled(&about, Some("about"), "About");
         page.append(&switcher);
         page.append(&tabs);
         let back = Button::with_label("Back");
@@ -1084,59 +1080,70 @@ fn build_menu_screen(stack: &Stack, audio: Rc<RefCell<game::config::AudioSetting
         s.add_named(&page, Some("settings"));
         s.set_visible_child_name("settings");
     });
-    let s = stack.clone();
+    let app_quit = stack.root();
     quit.connect_clicked(move |_| {
-        if let Some(root) = s.root() {
-            root.downcast::<ApplicationWindow>().ok().map(|w| w.close());
+        if let Some(root) = app_quit.downcast_ref::<ApplicationWindow>() {
+            root.close();
         }
     });
     content
 }
 
-fn build_ui(app: &Application) {
-    let audio = Rc::new(RefCell::new(game::config::AudioSettings::default()));
-    let stack = Stack::new();
-    stack.set_vexpand(true);
-    stack.set_hexpand(true);
-    let menu = build_menu_screen(&stack, Rc::clone(&audio));
-    stack.add_named(&menu, Some("menu"));
-    let bindings = Rc::new(RefCell::new(default_controls()));
-    let players = SpinButton::with_range(1.0, 4.0, 1.0);
-    players.set_value(2.0);
-    let setup = build_setup_screen(&stack, players, bindings);
-    stack.add_named(&setup, Some("setup"));
-    let lan = Box::new(Orientation::Vertical, 12);
-    lan.set_margin_top(36);
-    lan.set_margin_start(36);
-    lan.set_margin_end(36);
-    lan.set_margin_bottom(36);
-    lan.append(&Label::new(Some("LAN Multiplayer")));
-    lan.append(&Label::new(Some(&format!(
-        "Authoritative LAN protocol v{} • lobby up to {} players.",
-        network::PROTOCOL_VERSION,
-        lobby::MAX_LOBBY_PLAYERS
-    ))));
-    lan.append(&Label::new(Some(
-        "LAN gameplay comes after the completed local arena core.",
+fn build_lan_screen(stack: &Stack) -> Box {
+    let page = Box::new(Orientation::Vertical, 12);
+    page.set_margin_top(36);
+    page.set_margin_bottom(36);
+    page.set_margin_start(36);
+    page.set_margin_end(36);
+    page.append(&Label::new(Some("LAN Multiplayer")));
+    page.append(&Label::new(Some(
+        "Host-authoritative LAN foundation is implemented for the upcoming online gameplay slice.",
     )));
+    page.append(&Label::new(Some(
+        "Real host/join gameplay is not enabled yet; local arena development remains the current focus.",
+    )));
+    let docs = LinkButton::with_label(
+        "https://github.com/Praxis1071/TankRush",
+        "Open TankRush repository",
+    );
+    page.append(&docs);
     let back = Button::with_label("Back");
     let s = stack.clone();
     back.connect_clicked(move |_| s.set_visible_child_name("menu"));
-    lan.append(&back);
+    page.append(&back);
+    page
+}
+
+fn build_app(app: &Application) {
+    let stack = Stack::new();
+    stack.set_transition_type(gtk4::StackTransitionType::SlideLeftRight);
+    let player_count = SpinButton::new(
+        Some(&Adjustment::new(2.0, 1.0, 4.0, 1.0, 2.0, 0.0)),
+        1.0,
+        0,
+    );
+    let bindings = Rc::new(RefCell::new(default_controls()));
+    let audio = Rc::new(RefCell::new(game::config::AudioSettings::default()));
+    let menu = build_menu_screen(&stack, Rc::clone(&audio));
+    let setup = build_setup_screen(&stack, player_count, Rc::clone(&bindings));
+    let lan = build_lan_screen(&stack);
+    stack.add_named(&menu, Some("menu"));
+    stack.add_named(&setup, Some("setup"));
     stack.add_named(&lan, Some("lan"));
     stack.set_visible_child_name("menu");
+
     let window = ApplicationWindow::builder()
         .application(app)
         .title("TankRush")
-        .default_width(1200)
-        .default_height(800)
-        .child(&stack)
+        .default_width(1180)
+        .default_height(780)
         .build();
+    window.set_child(Some(&stack));
     window.present();
 }
 
 fn main() {
     let app = Application::builder().application_id(APP_ID).build();
-    app.connect_activate(build_ui);
+    app.connect_activate(build_app);
     app.run();
 }
