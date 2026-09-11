@@ -259,3 +259,85 @@ fn projectile_threat(state: &GameState, position: Vec2, radius: f32) -> f32 {
             let closest = projectile.position + velocity * projection;
             let miss = (position - closest).length();
             if miss <= radius + 26.0 && projection < 180.0 {
+                Some((180.0 - projection).max(1.0) / (miss + 8.0))
+            } else {
+                None
+            }
+        })
+        .fold(0.0, f32::max)
+}
+
+fn threat_escape_angle(state: &GameState, position: Vec2, base: f32, threat: f32) -> f32 {
+    let mut escape = Vec2::ZERO;
+    for projectile in &state.projectiles {
+        let to_tank = position - projectile.position;
+        if projectile.velocity.normalized().dot(to_tank) > 0.0 && to_tank.length() < 220.0 {
+            let velocity = projectile.velocity.normalized();
+            let side = Vec2::new(-velocity.y, velocity.x);
+            let sign = if side.dot(to_tank) >= 0.0 { 1.0 } else { -1.0 };
+            escape = escape + side * sign * threat;
+        }
+    }
+    if escape.length() <= f32::EPSILON {
+        base
+    } else {
+        let desired = escape.normalized();
+        desired.y.atan2(desired.x)
+    }
+}
+
+fn ricochet_can_hit(origin: Vec2, direction: Vec2, target: Vec2, map: &GameMap) -> bool {
+    let mut position = origin;
+    let mut velocity = direction.normalized();
+    for _ in 0..3 {
+        let end = position + velocity * 520.0;
+        let mut nearest = None;
+        for wall in &map.walls {
+            if let Some(hit) = collision::segment_wall_hit(position, end, *wall) {
+                if nearest
+                    .is_none_or(|current: collision::CollisionHit| hit.distance < current.distance)
+                {
+                    nearest = Some(hit);
+                }
+            }
+        }
+        if (target - position).length() <= 520.0 {
+            let to_target = target - position;
+            if velocity.dot(to_target.normalized()) > 0.995 {
+                return true;
+            }
+        }
+        let Some(hit) = nearest else {
+            return false;
+        };
+        position = hit.point + hit.normal * 0.5;
+        velocity = velocity.reflect(hit.normal).normalized();
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::{GameConfig, GameMap, GameSimulation, MapSize};
+
+    #[test]
+    fn ai_targets_another_alive_tank() {
+        let mut sim = GameSimulation::new(GameMap::generate(MapSize::Small), GameConfig::default());
+        let ai = sim.state.add_player("AI", None).unwrap();
+        let enemy = sim.state.add_player("Enemy", None).unwrap();
+        sim.state.add_tank(ai, Vec2::new(100.0, 100.0));
+        sim.state.add_tank(enemy, Vec2::new(200.0, 100.0));
+        let mut controller = AiController::default();
+        let input = controller.input(&sim.state, &sim.map, &sim.config, &[], ai, 1.0 / 60.0);
+        assert!(input.right || input.forward || input.fire);
+        assert_eq!(controller.target, Some(enemy));
+    }
+
+    #[test]
+    fn ai_can_find_a_connected_waypoint() {
+        let map = GameMap::generate(MapSize::Medium);
+        let waypoint = next_waypoint(Vec2::new(48.0, 48.0), Vec2::new(240.0, 240.0), &map, 14.0);
+        assert!(waypoint.is_some());
+    }
+}
