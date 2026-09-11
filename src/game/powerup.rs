@@ -33,11 +33,9 @@ impl PowerUpKind {
 
     pub const fn ammo(self) -> Option<u8> {
         match self {
-            Self::DoubleShot
-            | Self::Laser
-            | Self::GuidedMissile
-            | Self::Shrapnel
-            | Self::Mine => Some(1),
+            Self::DoubleShot | Self::Laser | Self::GuidedMissile | Self::Shrapnel | Self::Mine => {
+                Some(1)
+            }
             Self::MachineGun => Some(8),
         }
     }
