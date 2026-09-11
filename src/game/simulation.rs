@@ -1,4 +1,4 @@
-use super::{GameConfig, GameMap, GameState, PlayerId, Vec2, collision::segment_wall_hit};
+use super::{collision::segment_wall_hit, GameConfig, GameMap, GameState, PlayerId, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TankInput {
