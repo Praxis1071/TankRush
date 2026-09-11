@@ -8,16 +8,19 @@ TankRush is designed around a clean separation between the game engine and the G
 
 - 🎮 Single-player and local multiplayer support
 - 👥 1–4 players on one machine
-- 🌐 LAN multiplayer architecture for up to 10 players
-- ⚔️ Free For All and Team Battle modes
+- 🌐 LAN multiplayer foundation for up to 10 players
+- ⚔️ Free For All and Team Battle rule foundations
 - 🗺️ Multiple arena sizes: Small, Medium, Large and Very Large
-- 🧱 Maze-style arenas and wall collision
+- 🧱 Seeded maze-style arenas and wall collision
 - 💥 Fast projectiles with wall ricochet
 - 🎯 One-shot tank destruction
-- 🔫 Up to 8 active projectiles per tank
+- 🔫 Maximum 5 active projectiles per tank
+- ⚡ Power-up weapon system with Double Shot, Machine Gun, Laser, Guided Missile, Shrapnel and Mine foundations
+- 💣 Placeable mines with arming time, trigger radius and lifetime
+- 🤖 Local AI opponent with navigation and combat tactics
 - ⏱️ Fixed 60 Hz game simulation
 - 🖥️ GTK4 desktop interface
-- 🔊 Persistent music and sound-effect settings
+- 🔊 Audio settings UI foundation
 - 🧪 Automated Rust tests, formatting, build and Clippy checks
 
 ## Tech Stack
@@ -26,7 +29,7 @@ TankRush is designed around a clean separation between the game engine and the G
 - **GUI:** GTK4
 - **Build system:** Cargo
 - **Platform:** Linux
-- **Networking:** LAN / UDP architecture
+- **Networking:** UDP / LAN architecture
 - **License:** MIT
 
 ## Project Architecture
@@ -40,7 +43,9 @@ TankRush
 │   ├── Simulation
 │   ├── Collision
 │   ├── Maps
-│   └── Match Rules
+│   ├── Match Rules
+│   ├── Power-ups / Mines
+│   └── AI
 ├── GTK4 UI
 │   ├── Main Menu
 │   ├── Match Setup
@@ -48,7 +53,7 @@ TankRush
 │   └── Game View
 └── LAN Multiplayer
     ├── Protocol
-    ├── Host
+    ├── Host-authoritative session foundation
     ├── Lobby
     └── Network Gameplay
 ```
@@ -90,27 +95,31 @@ GitHub Actions also runs the project's formatting, test, build and Clippy checks
 
 ## Development Roadmap
 
-TankRush is being developed incrementally:
+TankRush is being developed incrementally toward v1.0:
 
 - [x] Foundation and project structure
 - [x] Core game engine
 - [x] Tank movement and rotation
 - [x] Projectiles and ricochet primitives
 - [x] Maps and collision system
-- [x] Game modes and match rules
+- [x] Game modes and match-rule foundations
 - [x] GTK4 game interface foundation
 - [x] Rendering and fixed timestep integration
-- [x] LAN networking foundation
+- [x] LAN protocol/session foundation
 - [x] LAN lobby foundation
-- [ ] Authoritative LAN gameplay
-- [ ] Gameplay polish and effects
-- [ ] Persistent settings completion
+- [x] Power-up and Mine gameplay foundations
+- [ ] Finish and harden all power-up behaviors
+- [ ] Combat VFX and real audio
+- [ ] Authoritative LAN gameplay on real machines
+- [ ] Controls/accessibility and gamepad support
+- [ ] AI difficulty improvements
+- [ ] Complete match UX, statistics and persistence
+- [ ] Flatpak packaging and release validation
 - [ ] Final testing and hardening
-- [ ] Linux packaging and distribution
 
 ## Controls
 
-Tank controls are configurable per player. The project is designed to support separate keyboard controls for up to four local players.
+Tank controls are configurable per player. The current local game supports separate keyboard controls for up to four players.
 
 ## Contributing
 
@@ -124,6 +133,6 @@ Issues, bug reports and improvement ideas are welcome. Please keep gameplay logi
 
 TankRush is free and open-source software distributed under the [MIT License](LICENSE).
 
-## Roadmap batch
+## Development process
 
-The full gameplay roadmap implementation is being applied directly on `main`, with Rust verification in GitHub Actions after each meaningful batch.
+The v1.0 roadmap is implemented directly on `main` in meaningful, backed-up batches. Rust verification is performed in GitHub Actions after changes.
