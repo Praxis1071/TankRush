@@ -25,6 +25,7 @@ impl TankInput {
 pub struct SimulationEvent {
     pub player_id: PlayerId,
     pub kind: SimulationEventKind,
+    pub projectile_id: Option<super::ProjectileId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,15 +132,17 @@ impl GameSimulation {
                     .copied()
                     .unwrap_or_default()
                     <= 0.0
-                && self.state.fire(player_id, &self.config).is_some()
             {
-                if let Some(cooldown) = self.fire_cooldowns.get_mut(player_index) {
-                    *cooldown = self.config.fire_cooldown_seconds;
+                if let Some(projectile_id) = self.state.fire(player_id, &self.config) {
+                    if let Some(cooldown) = self.fire_cooldowns.get_mut(player_index) {
+                        *cooldown = self.config.fire_cooldown_seconds;
+                    }
+                    events.push(SimulationEvent {
+                        player_id,
+                        kind: SimulationEventKind::Fired,
+                        projectile_id: Some(projectile_id),
+                    });
                 }
-                events.push(SimulationEvent {
-                    player_id,
-                    kind: SimulationEventKind::Fired,
-                });
             }
         }
 
@@ -167,6 +170,7 @@ impl GameSimulation {
                 events.push(SimulationEvent {
                     player_id: projectile.owner,
                     kind: SimulationEventKind::ProjectileBounced,
+                    projectile_id: Some(projectile.id),
                 });
             } else {
                 projectile.position = end;
@@ -178,6 +182,7 @@ impl GameSimulation {
                     events.push(SimulationEvent {
                         player_id: target_id,
                         kind: SimulationEventKind::TankDestroyed,
+                        projectile_id: Some(projectile.id),
                     });
                 }
                 continue;
@@ -305,6 +310,24 @@ mod tests {
             simulation.step(&[]);
         }
         assert!(!simulation.state.tanks[1].alive);
+    }
+
+    #[test]
+    fn fire_event_identifies_created_projectile() {
+        let mut simulation =
+            GameSimulation::new(GameMap::rectangular(MapSize::Small), GameConfig::default());
+        let player = simulation.state.add_player("P1", None).unwrap();
+        simulation.state.add_tank(player, Vec2::new(100.0, 100.0));
+        let events = simulation.step(&[(
+            player,
+            TankInput {
+                fire: true,
+                ..TankInput::idle()
+            },
+        )]);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, SimulationEventKind::Fired);
+        assert_eq!(events[0].projectile_id, Some(super::super::ProjectileId(0)));
     }
 
     #[test]
