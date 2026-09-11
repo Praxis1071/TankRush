@@ -218,12 +218,12 @@ mod tests {
     }
 
     #[test]
-    fn projectile_limit_is_eight_per_tank() {
+    fn projectile_limit_matches_game_config() {
         let config = GameConfig::default();
         let mut state = GameState::default();
         let player = state.add_player("P1", None).unwrap();
         state.add_tank(player, Vec2::ZERO);
-        for _ in 0..8 {
+        for _ in 0..config.max_active_projectiles_per_tank {
             assert!(state.fire(player, &config).is_some());
         }
         assert!(state.fire(player, &config).is_none());
@@ -236,7 +236,7 @@ mod tests {
         let player = state.add_player("P1", None).unwrap();
         state.add_tank(player, Vec2::ZERO);
         state.fire(player, &config);
-        state.update_projectiles(5.0);
+        state.update_projectiles(config.projectile_lifetime_seconds + 0.1);
         assert!(state.projectiles.is_empty());
     }
 
