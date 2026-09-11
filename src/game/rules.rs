@@ -93,7 +93,11 @@ impl GameRules {
                         }
                     }
                 }
-                if teams.len() == 1 { Some(teams) } else { None }
+                if teams.len() == 1 {
+                    Some(teams)
+                } else {
+                    None
+                }
             }
         }
     }
