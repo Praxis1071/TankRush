@@ -34,7 +34,7 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "TankRush — Bevy".into(),
-                resolution: (1024.0, 768.0).into(),
+                resolution: (1024u32, 768u32).into(),
                 resizable: true,
                 ..default()
             }),
