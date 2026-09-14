@@ -1,8 +1,7 @@
 use bevy::prelude::*;
 
-mod game {
-    pub use tankrush::game::*;
-}
+#[path = "../game/mod.rs"]
+mod game;
 
 const SCALE: f32 = 1.0;
 
@@ -16,23 +15,22 @@ struct ArenaWallVisual;
 
 #[derive(Resource)]
 struct ArenaState {
-    map: game::GameMap,
     simulation: game::GameSimulation,
 }
 
 fn main() {
     let config = game::GameConfig::default();
     let map = game::GameMap::generate(game::MapSize::Medium);
-    let mut simulation = game::GameSimulation::new(config, map.clone());
+    let mut simulation = game::GameSimulation::new(map.clone(), config);
     let player = simulation
-        .state_mut()
+        .state
         .add_player("Player 1", None)
         .expect("player slot available");
-    simulation.state_mut().add_tank(player, map.spawn_points[0]);
+    simulation.state.add_tank(player, map.spawn_points[0]);
 
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.025, 0.035, 0.05)))
-        .insert_resource(ArenaState { map, simulation })
+        .insert_resource(ArenaState { simulation })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "TankRush — Bevy".into(),
@@ -50,7 +48,7 @@ fn main() {
 fn setup(mut commands: Commands, arena: Res<ArenaState>) {
     commands.spawn(Camera2d);
 
-    for wall in &arena.map.walls {
+    for wall in &arena.simulation.map.walls {
         let size = Vec2::new(wall.max.x - wall.min.x, wall.max.y - wall.min.y) * SCALE;
         let center = Vec2::new(
             (wall.min.x + wall.max.x) * 0.5,
@@ -63,7 +61,7 @@ fn setup(mut commands: Commands, arena: Res<ArenaState>) {
         ));
     }
 
-    for tank in &arena.simulation.state().tanks {
+    for tank in &arena.simulation.state.tanks {
         commands.spawn((
             Sprite::from_color(Color::srgb(0.12, 0.55, 0.95), Vec2::new(28.0, 28.0)),
             Transform::from_translation(
@@ -81,15 +79,17 @@ fn drive_simulation(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut arena: ResMut<ArenaState>,
 ) {
-    let mut input = game::TankInput::default();
-    input.forward = keyboard.pressed(KeyCode::KeyW);
-    input.backward = keyboard.pressed(KeyCode::KeyS);
-    input.turn_left = keyboard.pressed(KeyCode::KeyA);
-    input.turn_right = keyboard.pressed(KeyCode::KeyD);
-    input.fire = keyboard.just_pressed(KeyCode::Space);
+    let input = game::TankInput {
+        forward: keyboard.pressed(KeyCode::KeyW),
+        backward: keyboard.pressed(KeyCode::KeyS),
+        left: keyboard.pressed(KeyCode::KeyA),
+        right: keyboard.pressed(KeyCode::KeyD),
+        fire: keyboard.just_pressed(KeyCode::Space),
+    };
 
-    arena.simulation.set_input(game::PlayerId(0), input);
-    arena.simulation.update(time.delta_secs());
+    arena
+        .simulation
+        .advance(time.delta_secs(), &[(game::PlayerId(0), input)]);
 }
 
 fn sync_tanks(
@@ -99,7 +99,7 @@ fn sync_tanks(
     for (visual, mut transform) in &mut tanks {
         if let Some(tank) = arena
             .simulation
-            .state()
+            .state
             .tanks
             .iter()
             .find(|tank| tank.player_id == visual.player_id)
