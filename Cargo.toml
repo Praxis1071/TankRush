@@ -9,5 +9,3 @@ repository = "https://github.com/Praxis1071/TankRush"
 
 [dependencies]
 bevy = "0.19"
-gtk4 = { version = "0.10", package = "gtk4" }
-glib = "0.21"
