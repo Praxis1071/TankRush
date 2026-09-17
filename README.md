@@ -30,7 +30,7 @@ TankRush is designed around a clean separation between the game engine and the G
 - **Build system:** Cargo
 - **Platform:** Linux
 - **Networking:** UDP / LAN architecture
-- **License:** MIT
+- **License:** GNU General Public License v3 or later (GPL-3.0-or-later)
 
 ## Project Architecture
 
@@ -131,7 +131,7 @@ Issues, bug reports and improvement ideas are welcome. Please keep gameplay logi
 
 ## License
 
-TankRush is free and open-source software distributed under the [MIT License](LICENSE).
+TankRush is free and open-source software distributed under the [GNU General Public License v3 or later](LICENSE).
 
 ## Development process
 
